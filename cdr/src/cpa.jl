@@ -65,8 +65,8 @@ function trotter_setup(nqubits::Integer, steps::Integer, time::Float64, J::Float
     end
     target_circuit = tfitrottercircuit(nqubits,steps,topology=topology) #starts with RZZ layer
     target_circuit_layer = tfitrottercircuit(nqubits,1,topology=topology) #starts with RZZ layer
-    sigma_J = -2*T*J/steps
-    sigma_h = 2*T*h/steps 
+    sigma_J = -2*time*J/steps
+    sigma_h = 2*time*h/steps 
 
     sigma_J_indices = getparameterindices(target_circuit, PauliRotation, [:Z,:Z]) 
     sigma_h_indices = getparameterindices(target_circuit, PauliRotation, [:X])
@@ -112,10 +112,10 @@ function obs_magnetization(ansatz)
     Returns the normalised magnetization.
     """
     magnetization = PauliSum(ansatz.nqubits)
-    for i in 1:nq
+    for i in 1:ansatz.nqubits
         add!(magnetization,:Z,i)
     end
-    magnetization = magnetization/nq
+    magnetization = magnetization/ansatz.nqubits
     return magnetization
 end
 
@@ -468,7 +468,7 @@ function cdr(noisy_exp_values::Vector{Float64}, exact_exp_values::Vector{Float64
     return cdr_em(noisy_target_exp_value), rel_error_after, rel_error_before
 end 
 
-function full_run(ansatz, angle_definition, noise_kind, min_abs_coeff, min_abs_coeff_noisy;training_set = nothing, observable = nothing, num_samples=10, non_replaced_gates=30,depol_strength=0.01, dephase_strength=0.01,depol_strength_double=0.0033, dephase_strength_double=0.0033)
+function full_run(ansatz, angle_definition, noise_kind; min_abs_coeff =0.0, min_abs_coeff_noisy=0.0, training_set = nothing, observable = nothing, num_samples=10, non_replaced_gates=30,depol_strength=0.01, dephase_strength=0.01,depol_strength_double=0.0033, dephase_strength_double=0.0033, min_abs_coeff_target = 0.0)
     """
     # for CPA, the angle_definition is the sigma_star value
     """
@@ -488,16 +488,17 @@ function full_run(ansatz, angle_definition, noise_kind, min_abs_coeff, min_abs_c
 
 
     time1 = time()
-    exact_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind="noiseless") #should be close to one as we stay in FM phase
+    exact_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind="noiseless",min_abs_coeff = min_abs_coeff_target) #should be close to one as we stay in FM phase
     timetmp1 = time()
     @logmsg SubInfo "exact_expval_target done in $(round(timetmp1-time1; digits = 2)) s"
 
-    noisy_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind=noise_kind)
+    noisy_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind=noise_kind, min_abs_coeff = min_abs_coeff_target)
     timetmp2 = time()
     @logmsg SubInfo "noisy_expval_target done in $(round(timetmp2-timetmp1; digits = 2)) s"
     timetmp1 = timetmp2
     
 
+    
     exact_expvals = training_trotter_time_evolution(ansatz, training_set; observable = observable, noise_kind="noiseless", min_abs_coeff=min_abs_coeff);
     timetmp2 = time()
     @logmsg SubInfo "training_exact_time_evolution done in  $(round(timetmp2-timetmp1; digits = 2)) s"
@@ -526,8 +527,8 @@ function full_run(ansatz, angle_definition, noise_kind, min_abs_coeff, min_abs_c
         error("Noise kind $(noise_kind) unknown.")
     end
     ratio_rel_error = rel_error_before/rel_error_after
-    str = format("{:>2s} {:>5n} {:>5n} {:>6.2e} {:>10.2e} {:>10.2e}{:>5n} {:>5n}{:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e}\n",
-                obs_string, ansatz.nqubits, ansatz.steps, ansatz.time, ansatz.J, ansatz.h,non_replaced_gates, num_samples, angle_definition, min_abs_coeff, min_abs_coeff_noisy, exact_expval_target, noisy_expval_target[1], rel_error_before, rel_error_after, ratio_rel_error, timetmp2-time1);
+    str = format("{:>2s} {:>5n} {:>5n} {:>6.2e} {:>10.2e} {:>10.2e}{:>5n} {:>5n}{:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e}\n",
+                obs_string, ansatz.nqubits, ansatz.steps, ansatz.time, ansatz.J, ansatz.h,non_replaced_gates, num_samples, angle_definition, min_abs_coeff, min_abs_coeff_noisy, min_abs_coeff_target, exact_expval_target, noisy_expval_target[1], rel_error_before, rel_error_after, ratio_rel_error, timetmp2-time1);
     # writing to a file using write() method  
     write(log, str)  
         
@@ -551,5 +552,12 @@ function plot_MSE_csv_data(filename::String, xaxis::String)
     #     xlabel = xaxis == "sigma_J" ? L"\theta_J" : L"\theta_h", ylabel = "MSE", legend = :bottomright)
     plot!(x, data.MSE_brut, marker = :x, label = "MSE brut",
          xlabel = xaxis == "sigma_J" ? L"\theta_J" : L"\theta_h", ylabel = "MSE", legend = xaxis == "sigma_J" ? :bottomright : :bottomleft)
+    savefig(filename[1:end-4]*".png")
 end
 
+
+function run_method(trotter, training_set,sigma_star, noise_kind; min_abs_coeff = 0.0, min_abs_coeff_noisy =0.0, min_abs_coeff_target=0.0, num_samples=10, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
+    exact_expval_target, noisy_expval_target, corr_energy, rel_error_before, rel_error_after = full_run(trotter, sigma_star, noise_kind; min_abs_coeff = min_abs_coeff, min_abs_coeff_noisy = min_abs_coeff_noisy, observable = obs_magnetization(trotter), training_set = training_set, depol_strength=depol_strength, dephase_strength=dephase_strength,depol_strength_double = depol_strength_double, dephase_strength_double = dephase_strength_double);    
+    MSE_ind = (exact_expval_target - corr_energy)^2
+    return MSE_ind
+end
