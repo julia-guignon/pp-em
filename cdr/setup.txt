@@ -1,7 +1,0 @@
-##Steps (to get same setup as Piotr):
-#get VQA using PP running for a near-Clifford circuit (in PP.jl), QAOA ansatz and TFIM, obc, calc exp value of energies
-#choose a target state, MCMC sampling to get similar states as the target state (see impl. details)
-#calc PP for all those states
-#find noisy simulator in Julia (Qiskit Wrapper) or use NoiseModel of PP for the noisy simulations of cl. simul. states
-#def linear_fit_fct to generate the fit
-#corrrect the noisy observable
