@@ -468,6 +468,27 @@ function cdr(noisy_exp_values::Vector{Float64}, exact_exp_values::Vector{Float64
     return cdr_em(noisy_target_exp_value), rel_error_after, rel_error_before
 end 
 
+function cdr(
+    noisy_exp_values::Vector{Vector{Float64}},
+    exact_exp_values::Vector{Vector{Float64}},
+    noisy_target_exp_value::Vector{Float64},
+    exact_target_exp_value::Vector{Float64}
+)
+    nsteps = length(noisy_exp_values[1])
+    corrected = Vector{Float64}(undef, nsteps)
+    rel_errors_after = Vector{Float64}(undef, nsteps)
+    rel_errors_before = Vector{Float64}(undef, nsteps)
+    for i in 1:nsteps
+        corrected[i], rel_errors_after[i], rel_errors_before[i] = cdr(
+            noisy_exp_values[i],
+            exact_exp_values[i],
+            noisy_target_exp_value[i],
+            exact_target_exp_value[i]
+        )
+    end
+    return corrected, rel_errors_after, rel_errors_before
+end
+
 function full_run(ansatz, angle_definition, noise_kind; min_abs_coeff =0.0, min_abs_coeff_noisy=0.0, training_set = nothing, observable = nothing, num_samples=10, non_replaced_gates=30,depol_strength=0.01, dephase_strength=0.01,depol_strength_double=0.0033, dephase_strength_double=0.0033, min_abs_coeff_target = 0.0)
     """
     # for CPA, the angle_definition is the sigma_star value
