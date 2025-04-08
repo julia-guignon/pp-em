@@ -451,6 +451,7 @@ function realistic_gate_noise_circuit(ansatz; depol_strength_double=0.0033, deph
     return circuit
 end
 
+#cdr only for last value
 function cdr(noisy_exp_values::Vector{Float64}, exact_exp_values::Vector{Float64}, noisy_target_exp_value::Float64, exact_target_exp_value::Float64)
     training_data = DataFrame(x=noisy_exp_values,y=exact_exp_values)
     ols = lm(@formula(y ~ x), training_data)
@@ -468,6 +469,7 @@ function cdr(noisy_exp_values::Vector{Float64}, exact_exp_values::Vector{Float64
     return cdr_em(noisy_target_exp_value), rel_error_after, rel_error_before
 end 
 
+#cdr for all steps in time evolution
 function cdr(
     noisy_exp_values::Vector{Vector{Float64}},
     exact_exp_values::Vector{Vector{Float64}},
@@ -489,7 +491,45 @@ function cdr(
     return corrected, rel_errors_after, rel_errors_before
 end
 
-function full_run(ansatz, angle_definition, noise_kind; min_abs_coeff =0.0, min_abs_coeff_noisy=0.0, training_set = nothing, observable = nothing, num_samples=10, non_replaced_gates=30,depol_strength=0.01, dephase_strength=0.01,depol_strength_double=0.0033, dephase_strength_double=0.0033, min_abs_coeff_target = 0.0)
+
+#cdr with weighted linear regression
+function cdr(
+    noisy_exp_values::Vector{Vector{Float64}},
+    exact_exp_values::Vector{Vector{Float64}},
+    noisy_target_exp_value::Vector{Float64},
+    exact_target_exp_value::Vector{Float64},
+    decay_weights::Vector{Vector{Float64}}  # decay_weights[t][τ] gives weight for τ-th step in fit for step t
+)
+    nsteps = length(noisy_exp_values[1])
+    ncircuits = length(noisy_exp_values)
+    corrected = Vector{Float64}(undef, nsteps)
+    rel_errors_after = Vector{Float64}(undef, nsteps)
+    rel_errors_before = Vector{Float64}(undef, nsteps)
+
+    for t in 1:nsteps
+        x_all = Float64[]
+        y_all = Float64[]
+        w_all = Float64[]
+        for c in 1:ncircuits, τ in 1:t
+            push!(x_all, noisy_exp_values[c][τ])
+            push!(y_all, exact_exp_values[c][τ])
+            push!(w_all, decay_weights[t][τ])
+        end
+        df = DataFrame(x = x_all, y = y_all, w = w_all)
+        @debug df
+        ols = lm(@formula(y ~ x), df, wts = df.w)
+        cdr_em(x) = coef(ols)[1] + coef(ols)[2] * x
+
+        corrected[t] = cdr_em(noisy_target_exp_value[t])
+        rel_errors_after[t] = abs(exact_target_exp_value[t] - corrected[t]) / abs(exact_target_exp_value[t])
+        rel_errors_before[t] = abs(exact_target_exp_value[t] - noisy_target_exp_value[t]) / abs(exact_target_exp_value[t])
+    end
+
+    return corrected, rel_errors_after, rel_errors_before
+end
+
+
+function full_run(ansatz, angle_definition, noise_kind; min_abs_coeff = 0.0, min_abs_coeff_noisy=0.0, training_set = nothing, observable = nothing, num_samples=10, non_replaced_gates=30,depol_strength=0.01, dephase_strength=0.01,depol_strength_double=0.0033, dephase_strength_double=0.0033, min_abs_coeff_target = 0.0, record = false, cdr_method = "end")
     """
     # for CPA, the angle_definition is the sigma_star value
     """
@@ -509,54 +549,95 @@ function full_run(ansatz, angle_definition, noise_kind; min_abs_coeff =0.0, min_
 
 
     time1 = time()
-    exact_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind="noiseless",min_abs_coeff = min_abs_coeff_target) #should be close to one as we stay in FM phase
+    exact_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind="noiseless",min_abs_coeff = min_abs_coeff_target, record = record) #should be close to one as we stay in FM phase
     timetmp1 = time()
     @logmsg SubInfo "exact_expval_target done in $(round(timetmp1-time1; digits = 2)) s"
 
-    noisy_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind=noise_kind, min_abs_coeff = min_abs_coeff_target)
+    noisy_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind=noise_kind, min_abs_coeff = min_abs_coeff_target, record = record)
     timetmp2 = time()
     @logmsg SubInfo "noisy_expval_target done in $(round(timetmp2-timetmp1; digits = 2)) s"
     timetmp1 = timetmp2
     
-
     
-    exact_expvals = training_trotter_time_evolution(ansatz, training_set; observable = observable, noise_kind="noiseless", min_abs_coeff=min_abs_coeff);
+    exact_expvals = training_trotter_time_evolution(ansatz, training_set; observable = observable, noise_kind="noiseless", min_abs_coeff=min_abs_coeff, record = record);
     timetmp2 = time()
     @logmsg SubInfo "training_exact_time_evolution done in  $(round(timetmp2-timetmp1; digits = 2)) s"
     timetmp1 = timetmp2
     
-    noisy_expvals = training_trotter_time_evolution(ansatz, training_set; observable = observable, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff_noisy, depol_strength=depol_strength, dephase_strength=dephase_strength); 
+    noisy_expvals = training_trotter_time_evolution(ansatz, training_set; observable = observable, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff_noisy, depol_strength=depol_strength, dephase_strength=dephase_strength, record = record); 
     timetmp2 = time()
     @logmsg SubInfo "noisy_time_evolution done in  $(round(timetmp2-timetmp1; digits = 2)) s"
     timetmp1 = timetmp2
     
+    if !record || cdr_method == "end"
+        #use 1st method of cdr function
+        corr_energy, rel_error_after, rel_error_before = cdr(noisy_expvals, exact_expvals, noisy_expval_target[end], exact_expval_target[end])  
+        timetmp2 = time()
+        @logmsg SubInfo "final step cdr (linear regression) done in  $(round(timetmp2-timetmp1; digits=2)) s"
+        timetmp1 = timetmp2
+    else
+        if cdr_method == "std_LR"
+            # standard CDR for all steps
+            #use 2nd method of cdr function
+            corr_energy, rel_error_after, rel_error_before = cdr(noisy_expvals, exact_expvals, noisy_expval_target, exact_expval_target)  
 
-    corr_energy, rel_error_after, rel_error_before = cdr(noisy_expvals, exact_expvals, noisy_expval_target[1], exact_expval_target)  
-    timetmp2 = time()
-    @logmsg SubInfo "cdr done in  $(round(timetmp2-timetmp1; digits=2)) s"
+        elseif cdr_method == "lin_WLR"
+            # standard CDR for all steps
+            #use 3rd method of cdr function
+            decay_weights = [ [τ / t for τ in 1:t] for t in 1:length(noisy_expvals[1]) ]
+            corr_energy, rel_error_after, rel_error_before = cdr(noisy_expvals, exact_expvals, noisy_expval_target, exact_expval_target, decay_weights)  
 
-    @logmsg MainInfo "nq=$(ansatz.nqubits) noise=$noise_kind total run done in $(round(timetmp2-time1; digits=2)) s"
-
+        elseif cdr_method == "last1_WLR"
+            decay_weights = [[τ == t ? 1.0 : (τ == t-1 ? 0.5 : 0.0) for τ in 1:t] for t in 1:length(noisy_expvals[1])]
+            corr_energy, rel_error_after, rel_error_before = cdr(noisy_expvals, exact_expvals, noisy_expval_target, exact_expval_target, decay_weights)
+         
+        else
+            error("cdr correction method $(cdr_method) unknown.")
+        
+        timetmp2 = time()
+        @logmsg SubInfo "cdr method $(cdr_method) done in  $(round(timetmp2-timetmp1; digits=2)) s"
+        timetmp1 = timetmp2   
+         
+        end
+    end
+    
     # open file in append mode 
     if noise_kind=="naive"
-        log = open("trotter_brut_naive.log", "a")  
+        log = open("trotter_naive.log", "a")  
     elseif noise_kind=="gate"
-        log = open("trotter_brut_gate.log", "a")
+        log = open("trotter_gate.log", "a")
     elseif noise_kind == "realistic"
-        log = open("trotter_brut_realistic.log", "a")
+        log = open("trotter_realistic.log", "a")
     else
         error("Noise kind $(noise_kind) unknown.")
     end
-    ratio_rel_error = rel_error_before/rel_error_after
-    str = format("{:>2s} {:>5n} {:>5n} {:>6.2e} {:>10.2e} {:>10.2e}{:>5n} {:>5n}{:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e}\n",
-                obs_string, ansatz.nqubits, ansatz.steps, ansatz.time, ansatz.J, ansatz.h,non_replaced_gates, num_samples, angle_definition, min_abs_coeff, min_abs_coeff_noisy, min_abs_coeff_target, exact_expval_target, noisy_expval_target[1], rel_error_before, rel_error_after, ratio_rel_error, timetmp2-time1);
-    # writing to a file using write() method  
-    write(log, str)  
-        
-    # We need to close the file in order to write the content from the disk to file  
+
+    if record
+        for i in eachindex(rel_error_after)
+            str = format("{:>10s} {:>3n} {:>2s} {:>5n} {:>5n} {:>6.2e} {:>10.2e} {:>10.2e}{:>5n} {:>5n}{:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e}\n",
+            cdr_method, i, obs_string, ansatz.nqubits, ansatz.steps, ansatz.time, ansatz.J, ansatz.h,
+                non_replaced_gates, num_samples, angle_definition, min_abs_coeff,
+                min_abs_coeff_noisy, min_abs_coeff_target, exact_expval_target[i],
+                noisy_expval_target[i], rel_error_before[i], rel_error_after[i],
+                rel_error_before[i]/rel_error_after[i], timetmp2-time1)
+            write(log, str)
+        end
+    else
+        ratio_rel_error = rel_error_before / rel_error_after
+        str = format("{:>10s} {:>3n} {:>2s} {:>5n} {:>5n} {:>6.2e} {:>10.2e} {:>10.2e}{:>5n} {:>5n}{:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e}\n",
+        cdr_method, ansatz.steps, obs_string, ansatz.nqubits, ansatz.steps, ansatz.time, ansatz.J, ansatz.h,
+            non_replaced_gates, num_samples, angle_definition, min_abs_coeff,
+            min_abs_coeff_noisy, min_abs_coeff_target, exact_expval_target[end],
+            noisy_expval_target[1], rel_error_before, rel_error_after,
+            ratio_rel_error, timetmp2-time1)
+        write(log, str)
+    end
+
     close(log)
-    return exact_expval_target, noisy_expval_target[1], corr_energy, rel_error_before, rel_error_after
+
+    return exact_expval_target, noisy_expval_target, corr_energy, rel_error_before, rel_error_after
 end
+
 
 function plot_MSE_csv_data(filename::String, xaxis::String)
     data = CSV.read(filename, DataFrame)
@@ -575,6 +656,7 @@ function plot_MSE_csv_data(filename::String, xaxis::String)
          xlabel = xaxis == "sigma_J" ? L"\theta_J" : L"\theta_h", ylabel = "MSE", legend = xaxis == "sigma_J" ? :bottomright : :bottomleft)
     savefig(filename[1:end-4]*".png")
 end
+
 
 
 function run_method(trotter, training_set,sigma_star, noise_kind; min_abs_coeff = 0.0, min_abs_coeff_noisy =0.0, min_abs_coeff_target=0.0, num_samples=10, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
