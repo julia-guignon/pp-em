@@ -11,7 +11,7 @@ function full_run_test() ###
     h = 1.0 #abs(h) < abs(J) in ordered phase
 
     trotter = trotter_setup(nq, steps, T, J, h);
-    noise_kind = "realistic" #takes the default realistic values
+    noise_kind = "gate" #takes the default realistic values
     min_abs_coeff = 1e-8;
     min_abs_coeff_target = 1e-12;
     min_abs_coeff_noisy = min_abs_coeff;
@@ -20,12 +20,14 @@ function full_run_test() ###
     return 0
 end
 
+full_run_test()
+
 ### Figure 4 ###
 function fig_4ab()
     depol_strength_double = 0.0033
     dephase_strength_double = 0.0033
-    depol_strength = 0.01#0.00035
-    dephase_strength = 0.01#0.00035
+    depol_strength = 0.015 #0.00035
+    dephase_strength = 0.015 #0.00035
     #noise_kind = "realistic"
     noise_kind = "gate"
 
@@ -244,15 +246,20 @@ function fig_4ab()
     return 0
 end
 
-fig_4ab()
+#fig_4ab()
 
 
 function fig_4cd()
+    # depol_strength_double = 0.0033
+    # dephase_strength_double = 0.0033
+    # depol_strength = 0.00035
+    # dephase_strength = 0.00035
+    # noise_kind = "realistic"
+    noise_kind = "gate"
     depol_strength_double = 0.0033
     dephase_strength_double = 0.0033
-    depol_strength = 0.00035
-    dephase_strength = 0.00035
-    noise_kind = "realistic"
+    depol_strength = 0.01 #0.00035
+    dephase_strength = 0.01 #0.00035
 
     global_logger(UnbufferedLogger(stdout,MainInfo))
     nq = 20
