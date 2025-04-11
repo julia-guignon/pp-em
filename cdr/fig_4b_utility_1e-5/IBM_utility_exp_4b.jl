@@ -30,7 +30,6 @@ function IBM_utility_exp_4b()
     noise_kind = "gate_kickedising"
 
     min_abs_coeff = 1e-5; # training set (exact and noisy)
-    min_abs_coeff_noisy = min_abs_coeff;
     sigma_star = pi/20; # for our CPA methods
 
     collect_corr_energy = []
