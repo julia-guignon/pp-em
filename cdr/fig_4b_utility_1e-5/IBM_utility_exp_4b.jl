@@ -2,7 +2,7 @@ include("cpa.jl")
 
 function IBM_utility_exp_4b()
 
-    global_logger(UnbufferedLogger(stdout,MainInfo))
+    global_logger(UnbufferedLogger(stdout,SubInfo))
     IBM_angles = [0.3, 1.0, 0.7, 0.0, 0.2, 0.8, 0.5, 0.1, 0.4, 1.5707, 0.6]
     IBM_unmitigated_vals =  [ 0.4188991191900761,
     0.004107759335343423,
@@ -25,17 +25,17 @@ function IBM_utility_exp_4b()
     add!(observable, :Z, 62) # different to Manuel
 
     h_values = IBM_angles*nl/(2*T)
-    #h_values = h_values[1:2]
+    h_values = h_values[1:2]
     println("h_values = ", h_values)
     noise_kind = "gate_kickedising"
 
     min_abs_coeff = 1e-5; # training set (exact and noisy)
+    min_abs_coeff_noisy = min_abs_coeff;
     sigma_star = pi/20; # for our CPA methods
 
     collect_corr_energy = []
     for (i, h) in enumerate(h_values)
-        trotter = trotter_kickedising_setup(nq, nl, T, h;topology = topology)
-        global_logger(UnbufferedLogger(stdout, MainInfo))
+        trotter = trotter_kickedising_setup(nq, nl, T, h; topology = topology)
         training_set = training_set_generation_loose_perturbation(trotter; sample_function = "CPA", num_samples = 10)
 
         exact_expval_target, noisy_expval_target, corr_energy, rel_error_before, rel_error_after = full_run(
@@ -51,6 +51,7 @@ function IBM_utility_exp_4b()
         )
         append!(collect_corr_energy, corr_energy)
     end
+    return println("collect_corr_energy ", collect_corr_energy)
 end
 
 IBM_utility_exp_4b()

@@ -740,6 +740,7 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
         @logmsg SubInfo "noisy_expval_target done in $(round(timetmp2 - timetmp1; digits = 2)) s"
         timetmp1 = timetmp2
     else
+        
         time1 = time()
         exact_expval_target = NaN
         if real_qc_noisy_data !== nothing
