@@ -194,7 +194,7 @@ function training_set_generation_brut(ansatz::trotter_ansatz_tfim, angle_definit
     return training_thetas_list
 end
 
-function training_set_generation_strict_perturbation(ansatz::trotter_ansatz_tfim,sigma_star::Float64=pi/20; sample_function = nothing, num_samples::Int = 10)
+function training_set_generation_strict_perturbation(ansatz::trotter_ansatz_tfim,sigma_star::Float64 = pi/20; sample_function = nothing, num_samples::Int = 10)
     """
     Generates a training set according to the CPA approach. We do not use data augmentation here and stick to standard CPA.
     Their bound holds only if we replace all gates (we can't keep original gates).
@@ -271,7 +271,7 @@ function training_set_generation_loose_perturbation(ansatz::trotter_ansatz_tfim,
     end
 
     function sample_theta_small(sigma_star)
-        # sig_h ∈ [0, sigma_star] ∪ [π/2 - sigma_star, π/2]
+        # sig_h ∈ [0, sigma_star]
         sig_h =  rand(Uniform(0.0, sigma_star)) 
     
         # sig_J ∈ [−sigma_star, 0] ∪ [−π/2, −π/2 + sigma_star]
@@ -731,11 +731,11 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
 
     if use_target
         time1 = time()
-        exact_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind="noiseless", min_abs_coeff = min_abs_coeff_target,max_weight = max_weight, record = record)
+        exact_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind="noiseless", min_abs_coeff = min_abs_coeff_target, record = record)
         timetmp1 = time()
         @logmsg SubInfo "exact_expval_target done in $(round(timetmp1 - time1; digits = 2)) s"
 
-        noisy_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind=noise_kind, min_abs_coeff = min_abs_coeff_target, max_weight = max_weight, record = record)
+        noisy_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind=noise_kind, min_abs_coeff = min_abs_coeff_target, record = record)
         timetmp2 = time()
         @logmsg SubInfo "noisy_expval_target done in $(round(timetmp2 - timetmp1; digits = 2)) s"
         timetmp1 = timetmp2
@@ -755,7 +755,7 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
     @logmsg SubInfo "exact_training_time_evolution done in $(round(timetmp2 - timetmp1; digits = 2)) s"
     timetmp1 = timetmp2
 
-    noisy_expvals = training_trotter_time_evolution(ansatz, training_set; observable = observable, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff_noisy,max_weight = max_weight, depol_strength=depol_strength, dephase_strength=dephase_strength, record = record)
+    noisy_expvals = training_trotter_time_evolution(ansatz, training_set; observable = observable, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff_noisy, max_weight = max_weight, depol_strength=depol_strength, dephase_strength=dephase_strength, record = record)
     timetmp2 = time()
     @logmsg SubInfo "noisy_training_time_evolution done in $(round(timetmp2 - timetmp1; digits = 2)) s"
     timetmp1 = timetmp2
@@ -805,10 +805,10 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
 
     if record #we only record when there is a corrected exp value, so for cdr_method =="end", if record, we only get one value!
         for i in eachindex(corr_exp)
-            str = format("{:>10s} {:>3n} {:>10s} {:>5n} {:>5n} {:>6.2e} {:>10.2e} {:>10.2e}{:>5n} {:>5n}{:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.2e}\n",
+            str = format("{:>10s} {:>3n} {:>10s} {:>5n} {:>5n} {:>6.2e} {:>10.2e} {:>10.2e}{:>5n} {:>5n}{:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e}{:>5n} {:>10.3e} {:>10.2e} {:>10.2e} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.2e}\n",
                 cdr_method, i, obs_string, ansatz.nqubits, ansatz.steps, ansatz.time, ansatz.J, ansatz.h,
                 non_replaced_gates, num_samples, angle_definition, min_abs_coeff,
-                min_abs_coeff_noisy, min_abs_coeff_target,
+                min_abs_coeff_noisy, min_abs_coeff_target, max_weight,
                 use_target ? exact_expval_target[i] : NaN,
                 noisy_expval_target[i], corr_exp[i], rel_error_before[i], rel_error_after[i],
                 rel_error_before[i] / max(rel_error_after[i], 1e-12), timetmp2 - time1)
@@ -816,10 +816,10 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
         end
     else
         ratio_rel_error = rel_error_before / max(rel_error_after, 1e-12)
-        str = format("{:>10s} {:>3n} {:>2s} {:>5n} {:>5n} {:>6.2e} {:>10.2e} {:>10.2e}{:>5n} {:>5n}{:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e}{:>10.2e}  {:>10.3e} {:>10.3e} {:>10.3e} {:>10.2e}\n",
+        str = format("{:>10s} {:>3n} {:>2s} {:>5n} {:>5n} {:>6.2e} {:>10.2e} {:>10.2e}{:>5n} {:>5n}{:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e}  {:>5n} {:>10.3e} {:>10.2e}{:>10.2e}  {:>10.3e} {:>10.3e} {:>10.3e} {:>10.2e}\n",
             cdr_method, ansatz.steps, obs_string, ansatz.nqubits, ansatz.steps, ansatz.time, ansatz.J, ansatz.h,
             non_replaced_gates, num_samples, angle_definition, min_abs_coeff,
-            min_abs_coeff_noisy, min_abs_coeff_target,
+            min_abs_coeff_noisy, min_abs_coeff_target, max_weight,
             use_target ? exact_expval_target[end] : 0.0,
             noisy_expval_target[1], corr_exp, rel_error_before, rel_error_after,
             ratio_rel_error, timetmp2 - time1)

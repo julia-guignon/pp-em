@@ -12,18 +12,18 @@
 #cluster
 *.out 
 *.err
-*.slurm
+#*.slurm
 *.json
 *.mpack
 
 # SPEC specific
 *.txt
-*.log
+#*.log
 *.png 
 *.jpg
 /tutorials/*
 *.mpack
-*.sh
+#*.sh
 
 # data (for now)
 *.json

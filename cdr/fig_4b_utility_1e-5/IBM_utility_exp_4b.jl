@@ -1,4 +1,4 @@
-include("cpa.jl")
+include("../src/cpa.jl")
 
 function IBM_utility_exp_4b()
 
@@ -25,22 +25,22 @@ function IBM_utility_exp_4b()
     add!(observable, :Z, 62) # different to Manuel
 
     h_values = IBM_angles*nl/(2*T)
-    h_values = h_values[1:2]
     println("h_values = ", h_values)
     noise_kind = "gate_kickedising"
 
-    min_abs_coeff = 1e-5; # training set (exact and noisy)
+    min_abs_coeff = 1e-5; # training set (exact and noisy) #same values as in Manuels notebook
+    max_weight = 20 #for training data (non_Identity)
     min_abs_coeff_noisy = min_abs_coeff;
     sigma_star = pi/20; # for our CPA methods
 
     collect_corr_energy = []
     for (i, h) in enumerate(h_values)
         trotter = trotter_kickedising_setup(nq, nl, T, h; topology = topology)
-        training_set = training_set_generation_loose_perturbation(trotter; sample_function = "CPA", num_samples = 10)
+        training_set = training_set_generation_strict_perturbation(trotter; sample_function = "small", num_samples = 10)
 
         exact_expval_target, noisy_expval_target, corr_energy, rel_error_before, rel_error_after = full_run(
             trotter, sigma_star, noise_kind;
-            min_abs_coeff = min_abs_coeff,
+            min_abs_coeff = min_abs_coeff, max_weight = max_weight, 
             min_abs_coeff_noisy = min_abs_coeff_noisy,
             training_set = training_set,
             observable = observable,
