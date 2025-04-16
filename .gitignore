@@ -23,6 +23,7 @@
 *.jpg
 /tutorials/*
 *.mpack
+*.sh
 
 # data (for now)
 *.json

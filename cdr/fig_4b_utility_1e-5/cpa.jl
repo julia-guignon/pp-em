@@ -313,7 +313,7 @@ function training_set_generation_loose_perturbation(ansatz::trotter_ansatz_tfim,
     return training_thetas_list
 end
 
-function trotter_time_evolution(ansatz; observable = nothing, special_thetas=nothing, noise_kind="noiseless", record=false, min_abs_coeff=0.0, max_weight = Inf, depol_strength=0.01, dephase_strength=0.01,depol_strength_double=0.0033, dephase_strength_double=0.0033) 
+function trotter_time_evolution(ansatz; observable = nothing, special_thetas=nothing, noise_kind="noiseless", record=false, min_abs_coeff=0.0, depol_strength=0.01, dephase_strength=0.01,depol_strength_double=0.0033, dephase_strength_double=0.0033) 
     """
     Function that computes the time evolution of the ansatz using the first order Trotter approximation exact time evolution operator.
     The function returns the overlap of the final state with the |0> state.
@@ -365,17 +365,17 @@ function trotter_time_evolution(ansatz; observable = nothing, special_thetas=not
         expvals_trotter = Float64[]   
         push!(expvals_trotter, overlapwithzero(obs))
         for i in 1:ansatz.steps
-            psum = propagate!(circuit, obs, thetas[Int(nparams/ansatz.steps*(i-1)+1):Int(nparams/ansatz.steps*i)];min_abs_coeff=min_abs_coeff, max_weight = max_weight)
+            psum = propagate!(circuit, obs, thetas[Int(nparams/ansatz.steps*(i-1)+1):Int(nparams/ansatz.steps*i)];min_abs_coeff=min_abs_coeff)
             push!(expvals_trotter, overlapwithzero(psum))
         end
         return expvals_trotter  
     else 
-        psum = propagate!(circuit, obs,  thetas; min_abs_coeff=min_abs_coeff, max_weight = max_weight)
+        psum = propagate!(circuit, obs,  thetas; min_abs_coeff=min_abs_coeff)
         return overlapwithzero(psum)
     end
 end
 
-function training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, training_thetas::Vector{Vector{Float64}};observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record = false)
+function training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, training_thetas::Vector{Vector{Float64}};observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record = false)
     """
     Function that computes the time evolution of the ansatz using the first order Trotter approximation exact time evolution operator.
     The function returns the overlap of the final state with the |0> state.
@@ -386,7 +386,7 @@ function training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, training_t
         exact_expvals = Vector{Float64}()
     end
     for thetas in training_thetas
-        push!(exact_expvals, trotter_time_evolution(ansatz; observable = observable, record=record, special_thetas=thetas, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff,max_weight = max_weight, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double))
+        push!(exact_expvals, trotter_time_evolution(ansatz; observable = observable, record=record, special_thetas=thetas, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double))
     end
     return exact_expvals
 end
@@ -703,7 +703,7 @@ end
 
 
 function full_run(ansatz, angle_definition::Float64, noise_kind::String;
-    min_abs_coeff::Float64 = 0.0, min_abs_coeff_noisy=0.0, max_weight = Inf, training_set = nothing,
+    min_abs_coeff::Float64 = 0.0, min_abs_coeff_noisy=0.0, training_set = nothing,
     observable = nothing, num_samples=10, non_replaced_gates=30,
     depol_strength=0.01, dephase_strength=0.01,
     depol_strength_double=0.0033, dephase_strength_double=0.0033,
@@ -731,15 +731,16 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
 
     if use_target
         time1 = time()
-        exact_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind="noiseless", min_abs_coeff = min_abs_coeff_target,max_weight = max_weight, record = record)
+        exact_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind="noiseless", min_abs_coeff = min_abs_coeff_target, record = record)
         timetmp1 = time()
         @logmsg SubInfo "exact_expval_target done in $(round(timetmp1 - time1; digits = 2)) s"
 
-        noisy_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind=noise_kind, min_abs_coeff = min_abs_coeff_target, max_weight = max_weight, record = record)
+        noisy_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind=noise_kind, min_abs_coeff = min_abs_coeff_target, record = record)
         timetmp2 = time()
         @logmsg SubInfo "noisy_expval_target done in $(round(timetmp2 - timetmp1; digits = 2)) s"
         timetmp1 = timetmp2
     else
+        
         time1 = time()
         exact_expval_target = NaN
         if real_qc_noisy_data !== nothing
@@ -750,12 +751,12 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
         end
     end
 
-    exact_expvals = training_trotter_time_evolution(ansatz, training_set; observable = observable, noise_kind="noiseless", min_abs_coeff=min_abs_coeff, max_weight = max_weight, record = record)
+    exact_expvals = training_trotter_time_evolution(ansatz, training_set; observable = observable, noise_kind="noiseless", min_abs_coeff=min_abs_coeff, record = record)
     timetmp2 = time()
     @logmsg SubInfo "exact_training_time_evolution done in $(round(timetmp2 - timetmp1; digits = 2)) s"
     timetmp1 = timetmp2
 
-    noisy_expvals = training_trotter_time_evolution(ansatz, training_set; observable = observable, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff_noisy,max_weight = max_weight, depol_strength=depol_strength, dephase_strength=dephase_strength, record = record)
+    noisy_expvals = training_trotter_time_evolution(ansatz, training_set; observable = observable, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff_noisy, depol_strength=depol_strength, dephase_strength=dephase_strength, record = record)
     timetmp2 = time()
     @logmsg SubInfo "noisy_training_time_evolution done in $(round(timetmp2 - timetmp1; digits = 2)) s"
     timetmp1 = timetmp2
