@@ -313,7 +313,7 @@ function training_set_generation_loose_perturbation(ansatz::trotter_ansatz_tfim,
     return training_thetas_list
 end
 
-function trotter_time_evolution(ansatz; observable = nothing, special_thetas=nothing, noise_kind="noiseless", record=false, min_abs_coeff=0.0, max_weight = Inf, depol_strength=0.01, dephase_strength=0.01,depol_strength_double=0.0033, dephase_strength_double=0.0033) 
+function trotter_time_evolution(ansatz; observable = nothing, special_thetas=nothing, noise_kind="noiseless", record=false, min_abs_coeff=0.0, max_weight = Inf, noise_level = 1,  depol_strength=0.01, dephase_strength=0.01,depol_strength_double=0.0033, dephase_strength_double=0.0033) 
     """
     Function that computes the time evolution of the ansatz using the first order Trotter approximation exact time evolution operator.
     The function returns the overlap of the final state with the |0> state.
@@ -334,11 +334,11 @@ function trotter_time_evolution(ansatz; observable = nothing, special_thetas=not
         if record
             error("Naive noise model doesn't support recording :(")
         else
-            circuit = final_noise_layer_circuit(ansatz; depol_strength, dephase_strength)
+            circuit = final_noise_layer_circuit(ansatz; depol_strength = noise_level*depol_strength,dephase_strength = noise_level*dephase_strength)
         end
 
     elseif noise_kind=="gate_ising"
-        circuit = gate_noise_circuit(ansatz; depol_strength, dephase_strength, layer=record)
+        circuit = gate_noise_circuit(ansatz; depol_strength = noise_level*depol_strength, dephase_strength = noise_level*dephase_strength, layer=record)
 
     elseif noise_kind=="noiseless"
         if record
@@ -348,13 +348,13 @@ function trotter_time_evolution(ansatz; observable = nothing, special_thetas=not
         end
         
     elseif noise_kind=="realistic_ising"
-        circuit = realistic_gate_noise_circuit(ansatz; depol_strength_single = depol_strength, dephase_strength_single = dephase_strength, depol_strength_double = depol_strength_double, dephase_strength_double = dephase_strength_double, layer = record)
+        circuit = realistic_gate_noise_circuit(ansatz; depol_strength_single = noise_level*depol_strength, dephase_strength_single = noise_level*dephase_strength, depol_strength_double = noise_level*depol_strength_double, dephase_strength_double = noise_level*dephase_strength_double, layer = record)
 
     elseif noise_kind=="gate_kickedising"
-        circuit = kicked_gate_noise_circuit(ansatz; depol_strength, dephase_strength, layer = record)
+        circuit = kicked_gate_noise_circuit(ansatz; depol_strength = noise_level*depol_strength, dephase_strength = noise_level*dephase_strength, layer = record)
 
     elseif noise_kind=="realistic_kickedising"
-        circuit = realistic_kicked_gate_noise_circuit(ansatz; depol_strength_single = depol_strength, dephase_strength_single = dephase_strength, depol_strength_double = depol_strength_double, dephase_strength_double = dephase_strength_double, layer = record)
+        circuit = realistic_kicked_gate_noise_circuit(ansatz; depol_strength_single = noise_level*depol_strength, dephase_strength_single = noise_level*dephase_strength, depol_strength_double = noise_level*depol_strength_double, dephase_strength_double = noise_level*dephase_strength_double, layer = record)
 
     else
         error("Noise kind $(noise_kind) unknown.")
@@ -375,7 +375,7 @@ function trotter_time_evolution(ansatz; observable = nothing, special_thetas=not
     end
 end
 
-function training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, training_thetas::Vector{Vector{Float64}};observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record = false)
+function training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, training_thetas::Vector{Vector{Float64}};observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, noise_level = 1, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record = false)
     """
     Function that computes the time evolution of the ansatz using the first order Trotter approximation exact time evolution operator.
     The function returns the overlap of the final state with the |0> state.
@@ -386,10 +386,11 @@ function training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, training_t
         exact_expvals = Vector{Float64}()
     end
     for thetas in training_thetas
-        push!(exact_expvals, trotter_time_evolution(ansatz; observable = observable, record=record, special_thetas=thetas, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff,max_weight = max_weight, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double))
+        push!(exact_expvals, trotter_time_evolution(ansatz; observable = observable, record=record, special_thetas=thetas, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff,max_weight = max_weight, noise_level = noise_level, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double))
     end
     return exact_expvals
 end
+
 
 function final_noise_layer_circuit(ansatz; depol_strength=0.05, dephase_strength=0.05)
     """
