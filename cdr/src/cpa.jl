@@ -12,6 +12,8 @@ using Format
 using Logging
 using Distributions
 using LaTeXStrings
+using MLJLinearModels
+using MLJBase
 
 ################# Logging Setup ####################
 struct UnbufferedLogger <: Logging.AbstractLogger
@@ -375,6 +377,40 @@ function trotter_time_evolution(ansatz; observable = nothing, special_thetas=not
     end
 end
 
+######### ZNE isolated implementation ##########
+function zne_time_evolution(ansatz::trotter_ansatz_tfim;observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, noise_levels = [1,1.2,1.5], depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record = false)
+
+    noisy_expvals = Vector{Vector{Float64}}()
+    for i in noise_levels
+        noisy_expval_target = trotter_time_evolution(ansatz; observable = observable, record=record,noise_kind=noise_kind, noise_level = i,min_abs_coeff=min_abs_coeff,max_weight = max_weight, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double)
+        println("Noisy expval with noise level $(i): ", noisy_expval_target)
+        push!(noisy_expvals, noisy_expval_target)
+    end
+    return noisy_expvals
+end 
+
+function zne_fit(noisy_exp; noise_levels = [1,1.2,1.5], fit_type = "linear", exact_target_exp_value::Union{Nothing, Float64}=nothing, use_target::Bool=true)
+
+    training_data = DataFrame(x=noise_levels, y= noisy_exp)
+    if fit_type == "linear"
+        ols = lm(@formula(y ~ x), training_data)
+        cdr_em(x) = coef(ols)[1] + coef(ols)[2] * x
+        corrected = cdr_em(0.0)
+    end
+
+    # ToDo: add polynomial fit (Richardson extrapolation) for comparison
+    
+    if use_target && exact_target_exp_value !== nothing
+        rel_error_after = abs(exact_target_exp_value - corrected) / abs(exact_target_exp_value)
+        rel_error_before = abs(exact_target_exp_value - noisy_exp[1]) / abs(exact_target_exp_value) #fixed to the first noise_level to be one
+        return corrected, rel_error_after, rel_error_before
+    else
+        return corrected
+
+    end
+end
+
+
 function training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, training_thetas::Vector{Vector{Float64}};observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, noise_level = 1, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record = false)
     """
     Function that computes the time evolution of the ansatz using the first order Trotter approximation exact time evolution operator.
@@ -391,6 +427,37 @@ function training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, training_t
     return exact_expvals
 end
 
+
+###### vnCDR (ZNE and CDR combined) ##########
+
+function vnCDR_training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, training_thetas::Vector{Vector{Float64}}; observable=nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight=Inf, noise_levels=[1, 1.2, 1.5], depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record=false)
+    """
+    Function that computes the training data for several noise levels.
+    If record=true, stores full time evolution; else only final values.
+    """
+
+    if record
+        exact_expvals = Array{Float64,3}(undef, length(noise_levels), length(training_thetas), ansatz.steps+1) # 3D array: (noise_levels, circuits, steps+1)
+    else
+        exact_expvals = Array{Float64,2}(undef, length(noise_levels), length(training_thetas)) # 2D array: (noise_levels, circuits)
+    end
+
+    for (idx, i) in enumerate(noise_levels) # use enumerate to get valid index
+        noisy_training = training_trotter_time_evolution(ansatz, training_thetas; observable=observable, noise_kind=noise_kind, record=record, min_abs_coeff=min_abs_coeff, max_weight=max_weight, noise_level=i, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double)
+        println("Noisy expval at noise level $(i): ", noisy_training)
+
+        if record
+            for j in 1:length(training_thetas)
+                exact_expvals[idx, j, :] .= noisy_training[j] # full trajectory
+            end
+        else
+            for j in 1:length(training_thetas)
+                exact_expvals[idx, j] = noisy_training[j][end] # only final value
+            end
+        end
+    end
+    return exact_expvals
+end
 
 function final_noise_layer_circuit(ansatz; depol_strength=0.05, dephase_strength=0.05)
     """
@@ -700,6 +767,46 @@ function cdr(
     end
 
     return use_target ? (corrected, rel_errors_after, rel_errors_before) : corrected
+end
+
+#### vnCDR optimization function ####
+
+## 1st method: computes only final vnCDR corrected value
+function vnCDR(
+    noisy_exp_values::Array{Float64,2},        # size (m circuits, n+1 noise levels)
+    exact_exp_values::Vector{Float64},         # size m
+    noisy_target_exp_value::Vector{Float64};  # size n+1
+    exact_target_exp_value::Union{Nothing, Float64}=nothing,
+    use_target::Bool=true,
+    lambda::Float64=0.0                         # regularization strength
+)
+    model = lambda == 0.0 ? LinearRegressor(fit_intercept = false) : RidgeRegressor(lambda=lambda,fit_intercept = false)
+
+
+    # Convert input matrix to DataFrame
+    X = DataFrame(noisy_exp_values', :auto)
+
+    println("X", X)
+    println("exact_exp_values", exact_exp_values)
+    mach = machine(model, X, exact_exp_values)
+    fit!(mach)
+    params = fitted_params(mach)
+    println("params", params)
+
+    # Manually compute prediction
+    coefs = [v for (_, v) in fitted_params(mach).coefs]
+    println("coefs", coefs)
+    println("noisy_target_exp_value", noisy_target_exp_value)   
+    pred = coefs'* noisy_target_exp_value
+    println("pred" , pred)
+    
+    if use_target && exact_target_exp_value !== nothing
+        rel_error_after = abs(exact_target_exp_value - pred) / abs(exact_target_exp_value)
+        rel_error_before = abs(exact_target_exp_value - noisy_target_exp_value[end]) / abs(exact_target_exp_value)
+        return pred, rel_error_after, rel_error_before
+    else
+        return pred
+    end
 end
 
 
