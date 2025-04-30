@@ -380,16 +380,30 @@ end
 ######### ZNE isolated implementation ##########
 function zne_time_evolution(ansatz::trotter_ansatz_tfim;observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, noise_levels = [1,1.2,1.5], depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record = false)
 
-    noisy_expvals = Vector{Vector{Float64}}()
-    for i in noise_levels
+    if record
+        noisy_expvals = Array{Float64,2}(undef, length(noise_levels), ansatz.steps+1)
+    else
+        noisy_expvals = Array{Float64,1}(undef, length(noise_levels))
+    end
+
+    for (idx,i) in enumerate(noise_levels)
         noisy_expval_target = trotter_time_evolution(ansatz; observable = observable, record=record,noise_kind=noise_kind, noise_level = i,min_abs_coeff=min_abs_coeff,max_weight = max_weight, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double)
-        println("Noisy expval with noise level $(i): ", noisy_expval_target)
-        push!(noisy_expvals, noisy_expval_target)
+        #println("Noisy expval with noise level $(i): ", noisy_expval_target)
+        if record
+            for j in 1:length(noisy_expval_target)
+                noisy_expvals[idx,:] .= noisy_expval_target
+            end
+        else
+            for j in 1:length(noisy_expval_target)
+            noisy_expvals[idx] = noisy_expval_target[end]
+            end
+        end
     end
     return noisy_expvals
-end 
+end
 
-function zne_fit(noisy_exp; noise_levels = [1,1.2,1.5], fit_type = "linear", exact_target_exp_value::Union{Nothing, Float64}=nothing, use_target::Bool=true)
+# 1st method of ZNE
+function zne(noisy_exp::Vector{Float64}; noise_levels = [1,1.2,1.5], fit_type = "linear", exact_target_exp_value::Union{Nothing, Float64}=nothing, use_target::Bool=true)
 
     training_data = DataFrame(x=noise_levels, y= noisy_exp)
     if fit_type == "linear"
@@ -408,6 +422,32 @@ function zne_fit(noisy_exp; noise_levels = [1,1.2,1.5], fit_type = "linear", exa
         return corrected
 
     end
+end
+
+# 2nd method of ZNE
+function zne(noisy_exp::Matrix{Float64}; noise_levels = [1,1.2,1.5], fit_type = "linear", exact_target_exp_value::Union{Nothing, Vector{Float64}}=nothing, use_target::Bool=true)
+    nsteps = size(noisy_exp,2)
+    corrected = Vector{Float64}(undef, nsteps) # undef allocates memory
+    rel_errors_after = Vector{Float64}()
+    rel_errors_before = Vector{Float64}()
+    for i in 1:nsteps
+        result = zne(noisy_exp[:,i]; noise_levels = noise_levels, 
+        fit_type = fit_type,
+         exact_target_exp_value = use_target ? (exact_target_exp_value === nothing ? nothing : exact_target_exp_value[i]) : nothing,
+         use_target = use_target)
+         if use_target && exact_target_exp_value !== nothing
+            corrected[i], err_after, err_before = result
+            push!(rel_errors_after, err_after)
+            push!(rel_errors_before, err_before)
+         else
+            corrected[i] = result
+            #corrected[i] = max(corrected[i], 1e-16)
+        end
+
+    end
+
+        return use_target ? (corrected, rel_errors_after, rel_errors_before) : corrected
+
 end
 
 
