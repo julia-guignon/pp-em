@@ -378,7 +378,7 @@ function trotter_time_evolution(ansatz; observable = nothing, special_thetas=not
 end
 
 ######### ZNE isolated implementation ##########
-function zne_time_evolution(ansatz::trotter_ansatz_tfim;observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, noise_levels = [1,1.2,1.5], depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record = false)
+function zne_time_evolution(ansatz::trotter_ansatz_tfim;observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, noise_levels = [1,1.5,2.0], depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record = false)
 
     if record
         noisy_expvals = Array{Float64,2}(undef, length(noise_levels), ansatz.steps+1)
@@ -403,7 +403,7 @@ function zne_time_evolution(ansatz::trotter_ansatz_tfim;observable = nothing, no
 end
 
 # 1st method of ZNE
-function zne(noisy_exp::Vector{Float64}; noise_levels = [1,1.2,1.5], fit_type = "linear", exact_target_exp_value::Union{Nothing, Float64}=nothing, use_target::Bool=true)
+function zne(noisy_exp::Vector{Float64}; noise_levels = [1,1.5,2.0], fit_type = "linear", exact_target_exp_value::Union{Nothing, Float64}=nothing, use_target::Bool=true)
 
     training_data = DataFrame(x=noise_levels, y= noisy_exp)
     if fit_type == "linear"
@@ -425,12 +425,12 @@ function zne(noisy_exp::Vector{Float64}; noise_levels = [1,1.2,1.5], fit_type = 
 end
 
 # 2nd method of ZNE
-function zne(noisy_exp::Matrix{Float64}; noise_levels = [1,1.2,1.5], fit_type = "linear", exact_target_exp_value::Union{Nothing, Vector{Float64}}=nothing, use_target::Bool=true)
-    nsteps = size(noisy_exp,2)
+function zne(noisy_exp::Matrix{Float64}; noise_levels = [1,1.5,2.0], fit_type = "linear", exact_target_exp_value::Union{Nothing, Vector{Float64}}=nothing, use_target::Bool=true)
+    nsteps = size(noisy_exp,2) #this is one more than nsteps
     corrected = Vector{Float64}(undef, nsteps) # undef allocates memory
     rel_errors_after = Vector{Float64}()
     rel_errors_before = Vector{Float64}()
-    for i in 1:nsteps
+    for i in 2:nsteps
         result = zne(noisy_exp[:,i]; noise_levels = noise_levels, 
         fit_type = fit_type,
          exact_target_exp_value = use_target ? (exact_target_exp_value === nothing ? nothing : exact_target_exp_value[i]) : nothing,
@@ -470,7 +470,7 @@ end
 
 ###### vnCDR (ZNE and CDR combined) ##########
 
-function vnCDR_training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, training_thetas::Vector{Vector{Float64}}; observable=nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight=Inf, noise_levels=[1, 1.2, 1.5], depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record=false)
+function vnCDR_training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, training_thetas::Vector{Vector{Float64}}; observable=nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight=Inf, noise_levels=[1, 1.5,2.0], depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033, record=false)
     """
     Function that computes the training data for several noise levels.
     If record=true, stores full time evolution; else only final values.
@@ -716,7 +716,7 @@ function realistic_kicked_gate_noise_circuit(ansatz; depol_strength_double=0.003
 end
 
 ### 3 methods for CDR
-# CDR only for last value
+# CDR only for last value (was correct)
 function cdr(
     noisy_exp_values::Vector{Float64},
     exact_exp_values::Vector{Float64},
@@ -745,15 +745,26 @@ function cdr(
     noisy_target_exp_value::Vector{Float64};
     exact_target_exp_value::Union{Nothing, Vector{Float64}}=nothing,
     use_target::Bool=true)
-    nsteps = length(noisy_exp_values[1])
+    nsteps = length(noisy_target_exp_value)
     corrected = Vector{Float64}(undef, nsteps)
     rel_errors_after = Float64[]
     rel_errors_before = Float64[]
+    println("nsteps", nsteps)
+    
+    for i in 2:nsteps
+        println("i", i)
+        exact_exp_values_last  = [row[i] for row in exact_exp_values] # necessary for nested vecotr format
+        noisy_exp_values_last  = [row[i] for row in noisy_exp_values]
 
-    for i in 1:nsteps
+        println("noisy_exp_values_last", i, noisy_exp_values_last)
+        println("exact_exp_values_last", exact_exp_values_last)
+        println("noisy_target_exp_value", noisy_target_exp_value[i])
+        println("exact_target_exp_value", exact_target_exp_value[i])
+        
+
         result = cdr(
-            noisy_exp_values[i],
-            exact_exp_values[i],
+            noisy_exp_values_last,
+            exact_exp_values_last,
             noisy_target_exp_value[i];
             exact_target_exp_value = use_target ? exact_target_exp_value === nothing ? nothing : exact_target_exp_value[i] : nothing,
             use_target = use_target
@@ -784,7 +795,7 @@ function cdr(
     rel_errors_after = Float64[]
     rel_errors_before = Float64[]
 
-    for t in 1:nsteps
+    for t in 2:nsteps
         x_all, y_all, w_all = Float64[], Float64[], Float64[]
         for c in 1:ncircuits, τ in 1:t
             push!(x_all, noisy_exp_values[c][τ])
