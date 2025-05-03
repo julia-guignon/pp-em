@@ -3,13 +3,12 @@ include("../src/cpa.jl")
 function IBM_utility_exp_4b_all()
     global_logger(UnbufferedLogger(stdout, SubInfo))
     
-    nq = 8
-    nl = 2 
+    nq = 127
+    nl = 20 
     T = nl/20
-    topology = bricklayertopology(nq)
+    topology = ibmeagletopology
     IBM_angles = [0.3,1.0,0.7,0.0,0.2,0.8,0.5,0.1,0.4,1.5707,0.6]
     h_values = IBM_angles .* nl/(2*T)
-    println("h_values = ", h_values)
     
     IBM_unmitigated_vals =  [ 0.4188991191900761,
     0.004107759335343423,
@@ -29,12 +28,11 @@ function IBM_utility_exp_4b_all()
     depol_strength_double,dephase_strength_double = 0.0033,0.0033
     noise_levels=[1.0,1.5,2.0]; lambda=0.0; use_target=false; cdr_method="end"
     
-    observable = PauliSum(nq); add!(observable,:Z,4)
+    observable = PauliSum(nq); add!(observable,:Z,62)
     collect_exact = Float64[]; collect_noisy = Float64[]
     collect_zne = Float64[]; collect_cdr = Float64[]; collect_vncd = Float64[]
     
     for (i,h) in enumerate(h_values)
-    println("→ h = $h")
     trotter = trotter_kickedising_setup(nq, nl, T, h; topology=topology)
     training_set = training_set_generation_strict_perturbation(trotter; sample_function="small", num_samples=10)
     
@@ -63,9 +61,7 @@ function IBM_utility_exp_4b_all()
     
      # log file for this utility run, stamped with current datetime
      run_ts = Dates.format(Dates.now(), "YYYYmmdd_HHMMSS")
-     println(run_ts)
      logfname = "tfim_utility_nq=$(nq)_angle_def=$(round(sigma_star;digits = 3))_$(run_ts).log"
-     println("→ Logging summary to $logfname")
      
     # write summary table to log
     open(logfname, "a") do io
@@ -84,12 +80,6 @@ function IBM_utility_exp_4b_all()
         end
     end
 
-    println("Exact targets:   ", collect_exact)
-    println("Noisy targets:   ", collect_noisy)
-    println("ZNE outputs:     ", collect_zne)
-    println("CDR outputs:     ", collect_cdr)
-    println("vnCDR outputs:   ", collect_vncd)
-    
     end
     
     IBM_utility_exp_4b_all()

@@ -389,7 +389,6 @@ function zne_time_evolution(ansatz::trotter_ansatz_tfim;observable = nothing, no
 
     for (idx,i) in enumerate(noise_levels)
         noisy_expval_target = trotter_time_evolution(ansatz; observable = observable, record=record,noise_kind=noise_kind, noise_level = i,min_abs_coeff=min_abs_coeff,max_weight = max_weight, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double)
-        #println("Noisy expval with noise level $(i): ", noisy_expval_target)
         if record
             for j in 1:length(noisy_expval_target)
                 noisy_expvals[idx,:] .= noisy_expval_target
@@ -485,8 +484,6 @@ function vnCDR_training_trotter_time_evolution(ansatz::trotter_ansatz_tfim, trai
 
     for (idx, i) in enumerate(noise_levels) # use enumerate to get valid index
         noisy_training = training_trotter_time_evolution(ansatz, training_thetas; observable=observable, noise_kind=noise_kind, record=record, min_abs_coeff=min_abs_coeff, max_weight=max_weight, noise_level=i, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double)
-        println("Noisy expval at noise level $(i): ", noisy_training)
-
         if record
             for j in 1:length(training_thetas)
                 exact_expvals[idx, j, :] .= noisy_training[j] # full trajectory
@@ -750,19 +747,11 @@ function cdr(
     corrected = Vector{Float64}(undef, nsteps)
     rel_errors_after = Float64[]
     rel_errors_before = Float64[]
-    println("nsteps", nsteps)
-    
+
     for i in 2:nsteps
-        println("i", i)
-        exact_exp_values_last  = [row[i] for row in exact_exp_values] # necessary for nested vecotr format
+
+        exact_exp_values_last  = [row[i] for row in exact_exp_values] # necessary for nested vector format
         noisy_exp_values_last  = [row[i] for row in noisy_exp_values]
-
-        println("noisy_exp_values_last", i, noisy_exp_values_last)
-        println("exact_exp_values_last", exact_exp_values_last)
-        println("noisy_target_exp_value", noisy_target_exp_value[i])
-        println("exact_target_exp_value", exact_target_exp_value[i])
-        
-
         result = cdr(
             noisy_exp_values_last,
             exact_exp_values_last,
@@ -838,19 +827,17 @@ function vnCDR(
     # Convert input matrix to DataFrame
     X = DataFrame(noisy_exp_values', :auto)
 
-    println("X", X)
-    println("exact_exp_values", exact_exp_values)
     mach = machine(model, X, exact_exp_values)
     fit!(mach)
     params = fitted_params(mach)
-    println("params", params)
+    @logmsg SubInfo "params , $(params)"
 
     # Manually compute prediction
     coefs = [v for (_, v) in fitted_params(mach).coefs]
-    println("coefs", coefs)
-    println("noisy_target_exp_value", noisy_target_exp_value)   
+    @logmsg SubInfo "coefs , $(coefs)"
+    @logmsg SubInfo "noisy_target_exp_value , $(noisy_target_exp_value)" 
     pred = coefs'* noisy_target_exp_value
-    println("pred" , pred)
+    @logmsg SubInfo "pred , $(pred)"
     
     if use_target && exact_target_exp_value !== nothing
         rel_error_after = abs(exact_target_exp_value - pred) / abs(exact_target_exp_value)
@@ -870,25 +857,13 @@ function vnCDR(
     use_target::Bool=true,
     lambda::Float64=0.0
 )
-    #println("size exact_exp_vals ",size(exact_exp_values))
     nsteps = size(noisy_exp_values, 3)
-
-    println("nsteps" , nsteps)
     corrected = Vector{Float64}(undef, nsteps)
     rel_errors_after = Float64[] # vector 
     rel_errors_before = Float64[] 
     for i in 2:nsteps
-        # println("inner function: size 1st argument ",size(transpose(noisy_exp_values[:, :, i])))
-        # println("type of noisy_exp_values[:,:,i]",typeof(noisy_exp_values[:, :, i]))
         exact_exp_values_last  = [row[i] for row in exact_exp_values]
-
-        # println("exact training ",size(exact_exp_values_last))
-        # println("type of noisy target exp value ",typeof(noisy_target_exp_value[i]))
-        # println("type of exact target exp value ",typeof(exact_target_exp_value[i]))
-
-        # println("perm ",size(permutedims(noisy_exp_values[:, :, i], (2, 1))))
         result = vnCDR(
-        #permutedims(noisy_exp_values[:, :, i], (2, 1)),
         noisy_exp_values[:, :, i],
         exact_exp_values_last,
         noisy_target_exp_value[:,i];
@@ -901,9 +876,6 @@ function vnCDR(
 
         if use_target && exact_target_exp_value !== nothing
             corrected[i], err_after, err_before = result
-            println("corrected[i]", corrected[i])
-            println("err_after", err_after)
-            println("err_before", err_before)
             push!(rel_errors_after, err_after)
             push!(rel_errors_before, err_before)
         else
