@@ -2,8 +2,8 @@
 #SBATCH --job-name=utility_4b_1e-5_all
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=julia.gerecke@epfl.ch
-#SBATCH --output=/home/gerecke/pp-em/cdr/fig_4b_utility_1e-5/output/%j.out
-#SBATCH --error=/home/gerecke/pp-em/cdr/fig_4b_utility_1e-5/output/%j.err
+#SBATCH --output=/home/gerecke/pp-em/cdr/fig_4b_utility_1e-5_all/output/%j.out
+#SBATCH --error=/home/gerecke/pp-em/cdr/fig_4b_utility_1e-5_all/output/%j.err
 #SBATCH --qos=serial
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
