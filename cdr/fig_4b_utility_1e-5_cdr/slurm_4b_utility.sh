@@ -15,7 +15,7 @@ module load gcc openmpi openblas julia
 echo "STARTING AT $(date)"
 
 # Change to your project directory
-cd /home/gerecke/pp-em/cdr/fig_4b_utility_1e-5
+cd /home/gerecke/pp-em/cdr/fig_4b_utility_1e-5_cdr
 
 # Run your script using the Julia environment in ~/PauliProp
 srun julia --project=/home/gerecke/PauliProp IBM_utility_exp_4b.jl 

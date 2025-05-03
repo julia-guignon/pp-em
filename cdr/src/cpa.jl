@@ -14,6 +14,7 @@ using Distributions
 using LaTeXStrings
 using MLJLinearModels
 using MLJBase
+using Dates 
 
 ################# Logging Setup ####################
 struct UnbufferedLogger <: Logging.AbstractLogger
@@ -860,6 +861,59 @@ function vnCDR(
     end
 end
 
+##2nd method: vnCDR for every step
+function vnCDR(
+    noisy_exp_values::Array{Float64,3},  # (matrix) from via vnCDR_training_trotter_time_evolution      # size (n+1 noise levels, m circuits, t+1 steps)
+    exact_exp_values::Vector{Vector{Float64}},  # from  trotter_time_evolution!!
+    noisy_target_exp_value::Array{Float64,2}; # (matrix) from zne_time_evolution
+    exact_target_exp_value::Union{Nothing, Vector{Float64}}=nothing,
+    use_target::Bool=true,
+    lambda::Float64=0.0
+)
+    #println("size exact_exp_vals ",size(exact_exp_values))
+    nsteps = size(noisy_exp_values, 3)
+
+    println("nsteps" , nsteps)
+    corrected = Vector{Float64}(undef, nsteps)
+    rel_errors_after = Float64[] # vector 
+    rel_errors_before = Float64[] 
+    for i in 2:nsteps
+        # println("inner function: size 1st argument ",size(transpose(noisy_exp_values[:, :, i])))
+        # println("type of noisy_exp_values[:,:,i]",typeof(noisy_exp_values[:, :, i]))
+        exact_exp_values_last  = [row[i] for row in exact_exp_values]
+
+        # println("exact training ",size(exact_exp_values_last))
+        # println("type of noisy target exp value ",typeof(noisy_target_exp_value[i]))
+        # println("type of exact target exp value ",typeof(exact_target_exp_value[i]))
+
+        # println("perm ",size(permutedims(noisy_exp_values[:, :, i], (2, 1))))
+        result = vnCDR(
+        #permutedims(noisy_exp_values[:, :, i], (2, 1)),
+        noisy_exp_values[:, :, i],
+        exact_exp_values_last,
+        noisy_target_exp_value[:,i];
+        exact_target_exp_value = use_target ? (exact_target_exp_value === nothing ? nothing : exact_target_exp_value[i]) : nothing,
+        use_target = use_target,
+        lambda = lambda
+        )
+
+        
+
+        if use_target && exact_target_exp_value !== nothing
+            corrected[i], err_after, err_before = result
+            println("corrected[i]", corrected[i])
+            println("err_after", err_after)
+            println("err_before", err_before)
+            push!(rel_errors_after, err_after)
+            push!(rel_errors_before, err_before)
+        else
+            corrected[i] = result
+        end
+    end
+
+    return use_target ? (corrected, rel_errors_after, rel_errors_before) : corrected
+end
+
 
 function full_run(ansatz, angle_definition::Float64, noise_kind::String;
     min_abs_coeff::Float64 = 0.0, min_abs_coeff_noisy=0.0, max_weight = Inf, training_set = nothing,
@@ -888,7 +942,7 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
         training_set = training_set_generation_strict_perturbation(ansatz, angle_definition; num_samples=num_samples)
     end 
 
-    if use_target
+    if use_target # this is the expensive part of the computation
         time1 = time()
         exact_expval_target = trotter_time_evolution(ansatz; observable = observable, noise_kind="noiseless", min_abs_coeff = min_abs_coeff_target, record = record)
         timetmp1 = time()
@@ -988,6 +1042,196 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
     close(log)
 
     return exact_expval_target, noisy_expval_target, corr_exp, rel_error_before, rel_error_after
+end
+
+function full_run_all_methods(ansatz::trotter_ansatz_tfim,
+    angle_definition::Float64,
+    noise_kind::String;
+    min_abs_coeff::Float64=0.0,
+    min_abs_coeff_noisy::Float64=0.0,
+    max_weight=Inf,
+    training_set=nothing,
+    observable=nothing,
+    num_samples::Int=10,
+    depol_strength::Float64=0.01,
+    dephase_strength::Float64=0.01,
+    depol_strength_double::Float64=0.0033,
+    dephase_strength_double::Float64=0.0033,
+    min_abs_coeff_target::Float64=0.0,
+    noise_levels::Vector{Float64}=[1.0,1.5,2.0],
+    lambda::Float64=0.0,
+    use_target::Bool=true,
+    real_qc_noisy_data=nothing
+)
+    @logmsg SubInfo "→ Starting full_run_all_methods (noise_kind=$noise_kind, σ=$angle_definition)"
+
+    # determine observable name
+    obs_62 = PauliSum(ansatz.nqubits); add!(obs_62, :Z, 62)
+    if observable === nothing || observable == obs_interaction(ansatz)
+    observable, obs_string = obs_interaction(ansatz), "ZZ"
+    elseif observable == obs_magnetization(ansatz)
+    obs_string = "Z"
+    elseif observable == obs_62
+    obs_string = "Z_62"
+    else
+    obs_string = "Unknown"
+    end
+    @logmsg SubInfo "→ Observable: $obs_string"
+
+    # generate training set if needed
+    if training_set === nothing
+    @logmsg SubInfo "→ Generating training set (n=$num_samples)…"
+    training_set = training_set_generation_strict_perturbation(ansatz, angle_definition; num_samples=num_samples)
+    end
+    @logmsg SubInfo "→ Training set size: $(length(training_set))"
+
+    # timestamp start
+    time1 = time()
+
+    # compute or inject final‐step target values
+    if use_target
+    exact_target = trotter_time_evolution(ansatz; observable=observable,
+                    noise_kind="noiseless",
+                    min_abs_coeff=min_abs_coeff_target,
+                    record=false)
+    timetmp = time()
+    @logmsg SubInfo "→ exact_target done in $(round(timetmp - time1; digits=2)) s"
+
+    noisy_target = trotter_time_evolution(ansatz; observable=observable,
+                    noise_kind=noise_kind,
+                    min_abs_coeff=min_abs_coeff_target,
+                    record=false)
+    timetmp = time()
+    @logmsg SubInfo "→ noisy_target done in $(round(timetmp - time1; digits=2)) s"
+    else
+    @logmsg SubInfo "→ Skipping model targets; using real_qc_noisy_data=$(real_qc_noisy_data)"
+    exact_target = NaN
+    noisy_target = real_qc_noisy_data !== nothing ? real_qc_noisy_data : NaN
+    timetmp = time()
+    end
+    @logmsg SubInfo "→ Targets: exact=$(exact_target), noisy=$(noisy_target)"
+
+    # build training ensembles
+    exact_train = training_trotter_time_evolution(ansatz, training_set;
+                        observable=observable,
+                        noise_kind="noiseless",
+                        min_abs_coeff=min_abs_coeff,
+                        max_weight=max_weight,
+                        record=false)
+    timetmp1 = time()
+    @logmsg SubInfo "→ exact_train done in $(round(timetmp1 - timetmp; digits=2)) s"
+
+    noisy_train = training_trotter_time_evolution(ansatz, training_set;
+                        observable=observable,
+                        noise_kind=noise_kind,
+                        min_abs_coeff=min_abs_coeff_noisy,
+                        max_weight=max_weight,
+                        depol_strength=depol_strength,
+                        dephase_strength=dephase_strength,
+                        depol_strength_double=depol_strength_double,
+                        dephase_strength_double=dephase_strength_double,
+                        record=false)
+    timetmp2 = time()
+    @logmsg SubInfo "→ noisy_train done in $(round(timetmp2 - timetmp1; digits=2)) s"
+
+    # --- ZNE ---
+    zne_levels = zne_time_evolution(ansatz; observable=observable,
+            noise_kind=noise_kind,
+            min_abs_coeff=min_abs_coeff,
+            max_weight=max_weight,
+            noise_levels=noise_levels,
+            depol_strength=depol_strength,
+            dephase_strength=dephase_strength,
+            depol_strength_double=depol_strength_double,
+            dephase_strength_double=dephase_strength_double,
+            record=false)
+    result_zne = zne(zne_levels;
+    noise_levels=noise_levels,
+    fit_type="linear",
+    exact_target_exp_value = use_target ? exact_target : nothing,
+    use_target=use_target)
+    timetmp3 = time()
+    @logmsg SubInfo "→ ZNE done in $(round(timetmp3 - timetmp2; digits=2)) s"
+    if use_target
+    zne_corr, zne_err_after, zne_err_before = result_zne
+    else
+    zne_corr = result_zne; zne_err_before = NaN; zne_err_after = NaN
+    end
+    open("trotter_ZNE_$(noise_kind).log","a") do log
+    str = format(
+    "{:>10s} {:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>8.2f}\n",
+    "ZNE", ansatz.steps,
+    ansatz.time, ansatz.J, ansatz.h,
+     obs_string,
+      ansatz.nqubits,
+    exact_target, 
+    noisy_target,
+    zne_err_before, zne_err_after,
+    timetmp3 - time1
+    )
+    write(log, str)
+    end
+
+    # --- CDR ---
+    result_cdr = cdr(noisy_train, exact_train, noisy_target;
+    exact_target_exp_value = use_target ? exact_target : nothing,
+    use_target=use_target)
+    timetmp4 = time()
+    @logmsg SubInfo "→ CDR done in $(round(timetmp4 - timetmp3; digits=2)) s"
+    if use_target
+    cdr_corr, cdr_err_after, cdr_err_before = result_cdr
+    else
+    cdr_corr = result_cdr; cdr_err_before = NaN; cdr_err_after = NaN
+    end
+    open("trotter_CDR_$(noise_kind).log","a") do log
+    str = format(
+    "{:>10s} {:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>8.2f}\n",
+    "CDR", ansatz.steps,ansatz.time, ansatz.J, ansatz.h, obs_string, ansatz.nqubits,
+    exact_target, noisy_target,
+    cdr_err_before, cdr_err_after,
+    timetmp4 - time1
+    )
+    write(log, str)
+    end
+
+    # --- vnCDR ---
+    noisy_train_multi = vnCDR_training_trotter_time_evolution(ansatz, training_set;
+                                    observable=observable,
+                                    noise_kind=noise_kind,
+                                    min_abs_coeff=min_abs_coeff,
+                                    max_weight=max_weight,
+                                    noise_levels=noise_levels,
+                                    depol_strength=depol_strength,
+                                    dephase_strength=dephase_strength,
+                                    depol_strength_double=depol_strength_double,
+                                    dephase_strength_double=dephase_strength_double,
+                                    record=false)
+    result_vn = vnCDR(noisy_train_multi, exact_train, zne_levels;
+    exact_target_exp_value = use_target ? exact_target : nothing,
+    use_target=use_target, lambda=lambda)
+    timetmp5 = time()
+    @logmsg SubInfo "→ vnCDR done in $(round(timetmp5 - timetmp4; digits=2)) s"
+    if use_target
+    vn_corr, vn_err_after, vn_err_before = result_vn
+    else
+    vn_corr = result_vn; vn_err_before = NaN; vn_err_after = NaN
+    end
+    open("trotter_vnCDR_$(noise_kind).log","a") do log
+    str = format(
+    "{:>10s} {:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>8.2f}\n",
+    "vnCDR", ansatz.steps,ansatz.time, ansatz.J, ansatz.h, obs_string, ansatz.nqubits,
+    exact_target, noisy_target,
+    vn_err_before, vn_err_after,
+    timetmp5 - time1
+    )
+    write(log, str)
+    end
+
+    @logmsg SubInfo "→ full_run_all_methods complete."
+    return (exact_target, noisy_target,
+    zne_corr, cdr_corr, vn_corr,
+    zne_err_before, cdr_err_before, vn_err_before,
+    zne_err_after,  cdr_err_after,  vn_err_after)
 end
 
 
