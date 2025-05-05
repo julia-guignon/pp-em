@@ -21,3 +21,5 @@ cd /home/gerecke/pp-em/cdr/fig_4b_utility_1e-5_all
 srun julia --project=/home/gerecke/PauliProp IBM_utility_exp_4b_all.jl 
 
 echo "FINISHED AT $(date)"
+
+#sbatch --exclusive 
