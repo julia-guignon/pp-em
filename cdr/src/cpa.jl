@@ -54,12 +54,12 @@ struct trotter_ansatz_tfim
     time::Float64
     J::Float64
     h::Float64
-    sigma_J::Float64
-    sigma_h::Float64
-    sigma_J_indices::Vector{Int64}
-    sigma_h_indices::Vector{Int64}
-    sigma_J_indices_layer::Vector{Int64}
-    sigma_h_indices_layer::Vector{Int64}
+    theta_J::Float64
+    theta_h::Float64
+    theta_J_indices::Vector{Int64}
+    theta_h_indices::Vector{Int64}
+    theta_J_indices_layer::Vector{Int64}
+    theta_h_indices_layer::Vector{Int64}
 end
 
 #to generate the structure
@@ -88,16 +88,16 @@ function trotter_setup(nqubits::Integer, steps::Integer, time::Float64, J::Float
     end
     target_circuit = tfitrottercircuit(nqubits,steps,topology=topology) #starts with RZZ layer
     target_circuit_layer = tfitrottercircuit(nqubits,1,topology=topology) #starts with RZZ layer
-    sigma_J = -2*time*J/steps
-    sigma_h = 2*time*h/steps 
+    theta_J = -2*time*J/steps
+    theta_h = 2*time*h/steps 
 
-    sigma_J_indices = getparameterindices(target_circuit, PauliRotation, [:Z,:Z]) 
-    sigma_h_indices = getparameterindices(target_circuit, PauliRotation, [:X])
+    theta_J_indices = getparameterindices(target_circuit, PauliRotation, [:Z,:Z]) 
+    theta_h_indices = getparameterindices(target_circuit, PauliRotation, [:X])
     
-    sigma_J_indices_layer = getparameterindices(target_circuit_layer, PauliRotation, [:Z,:Z])
-    sigma_h_indices_layer = getparameterindices(target_circuit_layer, PauliRotation, [:X])
+    theta_J_indices_layer = getparameterindices(target_circuit_layer, PauliRotation, [:Z,:Z])
+    theta_h_indices_layer = getparameterindices(target_circuit_layer, PauliRotation, [:X])
     
-    return trotter_ansatz_tfim(target_circuit,target_circuit_layer, topology, nqubits, steps, time, J, h,sigma_J, sigma_h,sigma_J_indices, sigma_h_indices, sigma_J_indices_layer, sigma_h_indices_layer)
+    return trotter_ansatz_tfim(target_circuit,target_circuit_layer, topology, nqubits, steps, time, J, h,theta_J, theta_h,theta_J_indices, theta_h_indices, theta_J_indices_layer, theta_h_indices_layer)
 end
 
 #setup for fixed \theta_J angle (less params)
@@ -107,17 +107,17 @@ function trotter_kickedising_setup(nqubits::Integer, steps::Integer, time::Float
     end
     target_circuit = kickedisingcircuit(nqubits,steps,topology=topology) #starts with RZZ layer
     target_circuit_layer = kickedisingcircuit(nqubits,1,topology=topology) #starts with RZZ layer
-    sigma_J = -pi/2 
-    J = -sigma_J*steps/(2*time)
-    sigma_h = 2*time*h/steps 
+    theta_J = -pi/2 
+    J = -theta_J*steps/(2*time)
+    theta_h = 2*time*h/steps 
 
-    sigma_J_indices = getparameterindices(target_circuit, PauliRotation, [:Z,:Z]) 
-    sigma_h_indices = getparameterindices(target_circuit, PauliRotation, [:X])
+    theta_J_indices = getparameterindices(target_circuit, PauliRotation, [:Z,:Z]) 
+    theta_h_indices = getparameterindices(target_circuit, PauliRotation, [:X])
     
-    sigma_J_indices_layer = getparameterindices(target_circuit_layer, PauliRotation, [:Z,:Z])
-    sigma_h_indices_layer = getparameterindices(target_circuit_layer, PauliRotation, [:X])
+    theta_J_indices_layer = getparameterindices(target_circuit_layer, PauliRotation, [:Z,:Z])
+    theta_h_indices_layer = getparameterindices(target_circuit_layer, PauliRotation, [:X])
     
-    return trotter_ansatz_tfim(target_circuit,target_circuit_layer, topology, nqubits, steps, time, J, h,sigma_J, sigma_h,sigma_J_indices, sigma_h_indices, sigma_J_indices_layer, sigma_h_indices_layer)
+    return trotter_ansatz_tfim(target_circuit,target_circuit_layer, topology, nqubits, steps, time, J, h,theta_J, theta_h,theta_J_indices, theta_h_indices, theta_J_indices_layer, theta_h_indices_layer)
 end
 
 
@@ -128,13 +128,13 @@ function constrain_params(ansatz; layer=false)
     if layer
         nparams = countparameters(ansatz.target_circuit_layer)
         thetas = zeros(nparams)
-        thetas[ansatz.sigma_h_indices_layer] .= ansatz.sigma_h
-        thetas[ansatz.sigma_J_indices_layer] .= ansatz.sigma_J
+        thetas[ansatz.theta_h_indices_layer] .= ansatz.theta_h
+        thetas[ansatz.theta_J_indices_layer] .= ansatz.theta_J
     else
         nparams = countparameters(ansatz.target_circuit)
         thetas = zeros(nparams)
-        thetas[ansatz.sigma_h_indices] .= ansatz.sigma_h
-        thetas[ansatz.sigma_J_indices] .= ansatz.sigma_J
+        thetas[ansatz.theta_h_indices] .= ansatz.theta_h
+        thetas[ansatz.theta_J_indices] .= ansatz.theta_J
     end
     
     return thetas
@@ -163,28 +163,28 @@ function obs_magnetization(ansatz)
     return magnetization
 end
 
-function training_set_generation_brut(ansatz::trotter_ansatz_tfim, angle_definition::Float64=pi/2; num_samples::Int = 10, non_replaced_gates::Int = 30)
+function training_circuit_generation_brut(ansatz::trotter_ansatz_tfim, angle_definition::Float64=pi/2; num_samples::Int = 10, non_replaced_gates::Int = 30)
     """
     Generates a training set of thetas for the ansatz. The training set is generated by selecting a number of cliffords and non-cliffords
     and setting the corresponding thetas to multiples of angle_definition. 
     """
     nparams = countparameters(ansatz.target_circuit)
     replaced_gates = nparams - non_replaced_gates
-    ratio = length(ansatz.sigma_J_indices)/(length(ansatz.sigma_h_indices)+length(ansatz.sigma_J_indices))
+    ratio = length(ansatz.theta_J_indices)/(length(ansatz.theta_h_indices)+length(ansatz.theta_J_indices))
     num_h = Int(round((1-ratio)*replaced_gates))
     num_J = Int(round(ratio*replaced_gates))
     training_thetas_list = Vector{Vector{Float64}}()
     thetas = constrain_params(ansatz)
-    k_h =round(ansatz.sigma_h/(angle_definition))
-    k_J =round(ansatz.sigma_J/(angle_definition))
+    k_h =round(ansatz.theta_h/(angle_definition))
+    k_J =round(ansatz.theta_J/(angle_definition))
     
     
     for _ in 1:num_samples
         training_thetas = deepcopy(thetas)
-        shuffled_sigma_h_indices =  Random.shuffle!(ansatz.sigma_h_indices)
-        shuffled_sigma_J_indices = Random.shuffle!(ansatz.sigma_J_indices)
-        selected_indices_h = shuffled_sigma_h_indices[1:num_h]
-        selected_indices_J = shuffled_sigma_J_indices[1:num_J]
+        shuffled_theta_h_indices =  Random.shuffle!(ansatz.theta_h_indices)
+        shuffled_theta_J_indices = Random.shuffle!(ansatz.theta_J_indices)
+        selected_indices_h = shuffled_theta_h_indices[1:num_h]
+        selected_indices_J = shuffled_theta_J_indices[1:num_J]
 
         for i in selected_indices_h
             training_thetas[i] = k_h*angle_definition
@@ -197,27 +197,27 @@ function training_set_generation_brut(ansatz::trotter_ansatz_tfim, angle_definit
     return training_thetas_list
 end
 
-function training_set_generation_strict_perturbation(ansatz::trotter_ansatz_tfim,sigma_star::Float64 = pi/20; sample_function = nothing, num_samples::Int = 10)
+function training_circuit_generation_strict_perturbation(ansatz::trotter_ansatz_tfim,theta_star::Float64 = pi/20; sample_function = nothing, num_samples::Int = 10)
     """
     Generates a training set according to the CPA approach. We do not use data augmentation here and stick to standard CPA.
     Their bound holds only if we replace all gates (we can't keep original gates).
     """
-    function sample_theta_CPA(sigma_star)
-        # sig_h ∈ [0, sigma_star] ∪ [π/2 - sigma_star, π/2]
-        sig_h = rand(Bool) ? rand(Uniform(0.0, sigma_star)) : rand(Uniform(π/2 - sigma_star, π/2))
+    function sample_theta_CPA(theta_star)
+        # sig_h ∈ [0, theta_star] ∪ [π/2 - theta_star, π/2]
+        sig_h = rand(Bool) ? rand(Uniform(0.0, theta_star)) : rand(Uniform(π/2 - theta_star, π/2))
     
-        # sig_J ∈ [−sigma_star, 0] ∪ [−π/2, −π/2 + sigma_star]
-        sig_J = rand(Bool) ? rand(Uniform(-sigma_star, 0.0)) : rand(Uniform(-π/2, -π/2 + sigma_star))
+        # sig_J ∈ [−theta_star, 0] ∪ [−π/2, −π/2 + theta_star]
+        sig_J = rand(Bool) ? rand(Uniform(-theta_star, 0.0)) : rand(Uniform(-π/2, -π/2 + theta_star))
     
         return sig_h, sig_J
     end
 
-    function sample_theta_small(sigma_star)
-        # sig_h ∈ [0, sigma_star] ∪ [π/2 - sigma_star, π/2]
-        sig_h =  rand(Uniform(0.0, sigma_star)) 
+    function sample_theta_small(theta_star)
+        # sig_h ∈ [0, theta_star] ∪ [π/2 - theta_star, π/2]
+        sig_h =  rand(Uniform(0.0, theta_star)) 
     
-        # sig_J ∈ [−sigma_star, 0] ∪ [−π/2, −π/2 + sigma_star]
-        sig_J = rand(Uniform(-sigma_star, 0.0))
+        # sig_J ∈ [−theta_star, 0] ∪ [−π/2, −π/2 + theta_star]
+        sig_J = rand(Uniform(-theta_star, 0.0))
     
         return sig_h, sig_J
     end
@@ -236,9 +236,9 @@ function training_set_generation_strict_perturbation(ansatz::trotter_ansatz_tfim
     training_thetas = deepcopy(thetas)
     
     for _ in 1:num_samples
-        sig_h_perturbed, sig_J_perturbed = sample_function(sigma_star)
-        training_thetas[ansatz.sigma_h_indices] .= sig_h_perturbed
-        training_thetas[ansatz.sigma_J_indices] .= sig_J_perturbed
+        sig_h_perturbed, sig_J_perturbed = sample_function(theta_star)
+        training_thetas[ansatz.theta_h_indices] .= sig_h_perturbed
+        training_thetas[ansatz.theta_J_indices] .= sig_J_perturbed
         push!(training_thetas_list, copy(training_thetas))
     
     end
@@ -246,39 +246,39 @@ function training_set_generation_strict_perturbation(ansatz::trotter_ansatz_tfim
     return training_thetas_list
 end
 
-function training_set_generation_loose_perturbation(ansatz::trotter_ansatz_tfim,sigma_star::Float64=pi/20; sample_function = nothing, num_samples::Int = 10)
+function training_circuit_generation_loose_perturbation(ansatz::trotter_ansatz_tfim,theta_star::Float64=pi/20; sample_function = nothing, num_samples::Int = 10)
     """
     Generates a training set according to the CPA approach. We do not use data augmentation here and stick to standard CPA.
     Their bound holds only if we replace all gates (we can't keep original gates).
     """
 
-    if !(0.0 <= ansatz.sigma_h <= sigma_star) && !(pi/2 - sigma_star <= ansatz.sigma_h <= pi/2)
-        change_sigma_h = true
+    if !(0.0 <= ansatz.theta_h <= theta_star) && !(pi/2 - theta_star <= ansatz.theta_h <= pi/2)
+        change_theta_h = true
     else
-        change_sigma_h = false
+        change_theta_h = false
     end
-    if !(-sigma_star <= ansatz.sigma_J <= 0.0) && !(-pi/2 <= ansatz.sigma_J <= -pi/2 + sigma_star)
-        change_sigma_J = true
+    if !(-theta_star <= ansatz.theta_J <= 0.0) && !(-pi/2 <= ansatz.theta_J <= -pi/2 + theta_star)
+        change_theta_J = true
     else
-        change_sigma_J = false
+        change_theta_J = false
     end
     
-    function sample_theta_CPA(sigma_star)
-        # sig_h ∈ [0, sigma_star] ∪ [π/2 - sigma_star, π/2]
-        sig_h = rand(Bool) ? rand(Uniform(0.0, sigma_star)) : rand(Uniform(π/2 - sigma_star, π/2))
+    function sample_theta_CPA(theta_star)
+        # sig_h ∈ [0, theta_star] ∪ [π/2 - theta_star, π/2]
+        sig_h = rand(Bool) ? rand(Uniform(0.0, theta_star)) : rand(Uniform(π/2 - theta_star, π/2))
     
-        # sig_J ∈ [−sigma_star, 0] ∪ [−π/2, −π/2 + sigma_star]
-        sig_J = rand(Bool) ? rand(Uniform(-sigma_star, 0.0)) : rand(Uniform(-π/2, -π/2 + sigma_star))
+        # sig_J ∈ [−theta_star, 0] ∪ [−π/2, −π/2 + theta_star]
+        sig_J = rand(Bool) ? rand(Uniform(-theta_star, 0.0)) : rand(Uniform(-π/2, -π/2 + theta_star))
     
         return sig_h, sig_J
     end
 
-    function sample_theta_small(sigma_star)
-        # sig_h ∈ [0, sigma_star]
-        sig_h =  rand(Uniform(0.0, sigma_star)) 
+    function sample_theta_small(theta_star)
+        # sig_h ∈ [0, theta_star]
+        sig_h =  rand(Uniform(0.0, theta_star)) 
     
-        # sig_J ∈ [−sigma_star, 0] ∪ [−π/2, −π/2 + sigma_star]
-        sig_J = rand(Uniform(-sigma_star, 0.0))
+        # sig_J ∈ [−theta_star, 0] ∪ [−π/2, −π/2 + theta_star]
+        sig_J = rand(Uniform(-theta_star, 0.0))
     
         return sig_h, sig_J
     end
@@ -297,18 +297,18 @@ function training_set_generation_loose_perturbation(ansatz::trotter_ansatz_tfim,
     training_thetas = deepcopy(thetas)
     
     for _ in 1:num_samples
-        if change_sigma_h
-            sig_h_perturbed, _ = sample_function(sigma_star)
+        if change_theta_h
+            sig_h_perturbed, _ = sample_function(theta_star)
         else 
-            sig_h_perturbed = ansatz.sigma_h
+            sig_h_perturbed = ansatz.theta_h
         end
-        if change_sigma_J
-            _, sig_J_perturbed = sample_function(sigma_star)
+        if change_theta_J
+            _, sig_J_perturbed = sample_function(theta_star)
         else 
-            sig_J_perturbed = ansatz.sigma_J
+            sig_J_perturbed = ansatz.theta_J
         end
-        training_thetas[ansatz.sigma_h_indices] .= sig_h_perturbed
-        training_thetas[ansatz.sigma_J_indices] .= sig_J_perturbed
+        training_thetas[ansatz.theta_h_indices] .= sig_h_perturbed
+        training_thetas[ansatz.theta_J_indices] .= sig_J_perturbed
         push!(training_thetas_list, copy(training_thetas))
     
     end
@@ -911,7 +911,7 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
     end
 
     if training_set === nothing
-        training_set = training_set_generation_strict_perturbation(ansatz, angle_definition; num_samples=num_samples)
+        training_set = training_circuit_generation_strict_perturbation(ansatz, angle_definition; num_samples=num_samples)
     end 
 
     if use_target # this is the expensive part of the computation
@@ -960,7 +960,7 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
     elseif cdr_method == "std_LR"
         corr_exp_result = cdr(noisy_expvals, exact_expvals, noisy_expval_target; exact_target_exp_value = use_target ? exact_expval_target : nothing, use_target = use_target)
     elseif cdr_method == "lin_WLR"
-        decay_weights = [[τ / t for τ in 1:t] for t in 1:length(noisy_expvals[1])]
+        decay_weights = [[τ / t for τ in 1:t] for t in 1:noisy_expvals[1]] 
         corr_exp_result = cdr(noisy_expvals, exact_expvals, noisy_expval_target, decay_weights; exact_target_exp_value = use_target ? exact_expval_target : nothing, use_target = use_target)
     elseif cdr_method == "last1_WLR"
         decay_weights = [[τ == t ? 1.0 : (τ == t - 1 ? 0.5 : 0.0) for τ in 1:t] for t in 1:length(noisy_expvals[1])]
@@ -1053,7 +1053,7 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
     # generate training set if needed
     if training_set === nothing
     @logmsg SubInfo "→ Generating training set (n=$num_samples)…"
-    training_set = training_set_generation_strict_perturbation(ansatz, angle_definition; num_samples=num_samples)
+    training_set = training_circuit_generation_strict_perturbation(ansatz, angle_definition; num_samples=num_samples)
     end
     @logmsg SubInfo "→ Training set size: $(length(training_set))"
 
@@ -1219,16 +1219,16 @@ function plot_MSE_csv_data(filename::String, xaxis::String)
     plot!(x, data.MSE_strict_CPA, marker = :x, label = "MSE strict CPA")
     plot!(x, data.MSE_strict_small, marker = :x, label = "MSE strict small")
     #plot!(x, data.MSE_brut, marker = :x, label = "MSE brut",
-    #     xlabel = xaxis == "sigma_J" ? L"\theta_J" : L"\theta_h", ylabel = "MSE", legend = :bottomright)
+    #     xlabel = xaxis == "theta_J" ? L"\theta_J" : L"\theta_h", ylabel = "MSE", legend = :bottomright)
     plot!(x, data.MSE_brut, marker = :x, label = "MSE brut",
-         xlabel = xaxis == "sigma_J" ? L"\theta_J" : L"\theta_h", ylabel = "MSE", legend = xaxis == "sigma_J" ? :bottomright : :bottomleft)
+         xlabel = xaxis == "theta_J" ? L"\theta_J" : L"\theta_h", ylabel = "MSE", legend = xaxis == "theta_J" ? :bottomright : :bottomleft)
     savefig(filename[1:end-4]*".png")
 end
 
 
 
-function run_method(trotter, training_set,sigma_star, noise_kind; min_abs_coeff = 0.0, min_abs_coeff_noisy =0.0, min_abs_coeff_target=0.0, num_samples=10, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
-    exact_expval_target, noisy_expval_target, corr_exp, rel_error_before, rel_error_after = full_run(trotter, sigma_star, noise_kind; min_abs_coeff = min_abs_coeff, min_abs_coeff_noisy = min_abs_coeff_noisy, observable = obs_magnetization(trotter), training_set = training_set, depol_strength=depol_strength, dephase_strength=dephase_strength,depol_strength_double = depol_strength_double, dephase_strength_double = dephase_strength_double)  
+function run_method(trotter, training_set,theta_star, noise_kind; min_abs_coeff = 0.0, min_abs_coeff_noisy =0.0, min_abs_coeff_target=0.0, num_samples=10, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
+    exact_expval_target, noisy_expval_target, corr_exp, rel_error_before, rel_error_after = full_run(trotter, theta_star, noise_kind; min_abs_coeff = min_abs_coeff, min_abs_coeff_noisy = min_abs_coeff_noisy, observable = obs_magnetization(trotter), training_set = training_set, depol_strength=depol_strength, dephase_strength=dephase_strength,depol_strength_double = depol_strength_double, dephase_strength_double = dephase_strength_double)  
     MSE_ind =(exact_expval_target - corr_exp)^2
     return MSE_ind
 end
