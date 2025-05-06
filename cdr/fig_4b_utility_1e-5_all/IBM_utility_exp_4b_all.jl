@@ -66,11 +66,12 @@ function IBM_utility_exp_4b_all()
     # write summary table to log
     open(logfname, "a") do io
         # header
-        println(io, "idx,Exact_targets,Noisy_targets,ZNE_outputs,CDR_outputs,vnCDR_outputs")
+        println(io, "idx,h_value,Exact_targets,Noisy_targets,ZNE_outputs,CDR_outputs,vnCDR_outputs")
         # rows
         for i in 1:length(collect_exact)
             println(io, join((
                 i,
+                h_values[i],
                 collect_exact[i],
                 collect_noisy[i],
                 collect_zne[i],
