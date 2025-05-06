@@ -22,11 +22,11 @@ function IBM_utility_exp_4b_all()
    -0.001980699802309258,
     0.20175539633925924]
     
-    noise_kind="gate_kickedising"; sigma_star=π/20
+    noise_kind="gate_kickedising"; sigma_star=π/8
     min_abs_coeff, min_abs_coeff_noisy, max_weight = 1e-5,1e-5,20
     depol_strength,dephase_strength = 0.01,0.01
     depol_strength_double,dephase_strength_double = 0.0033,0.0033
-    noise_levels=[1.0,1.5,2.0]; lambda=0.0; use_target=false; cdr_method="end"
+    noise_levels=[1.0,1.5,2.0,2.5]; lambda=0.0; use_target=false; cdr_method="end"
     
     observable = PauliSum(nq); add!(observable,:Z,62)
     collect_exact = Float64[]; collect_noisy = Float64[]
@@ -34,7 +34,7 @@ function IBM_utility_exp_4b_all()
     
     for (i,h) in enumerate(h_values)
     trotter = trotter_kickedising_setup(nq, nl, T, h; topology=topology)
-    training_set = training_set_generation_strict_perturbation(trotter; sample_function="small", num_samples=10)
+    training_set = training_set_generation_loose_perturbation(trotter; sample_function="CPA", num_samples=10)
     
     exact, noisy,
     zne_corr, cdr_corr, vn_corr,
