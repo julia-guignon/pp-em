@@ -221,29 +221,29 @@ function training_circuit_generation_brut(ansatz::trotter_ansatz_tfim, angle_def
     return training_thetas_list
 end
 
-function training_circuit_generation_strict_perturbation(ansatz::trotter_ansatz_tfim,theta_star::Float64 = pi/20; sample_function = nothing, num_samples::Int = 10)
+function training_circuit_generation_strict_perturbation(ansatz::trotter_ansatz_tfim,angle_definition::Float64 = pi/20; sample_function = nothing, num_samples::Int = 10)
 
     """
     Generates a training set according to the CPA approach (http://arxiv.org/abs/2412.09518). We do not use data augmentation here (in the form of ZNE or PEC, then referred to as CPDR-ZNE or CPDR-PEC respectively), but stick to standard CPA.
     Their bound (Theorem 1) only holds if we replace all gates of the circuit, unlike the method in the original CDR paper (http://arxiv.org/abs/2005.10189).
     """
 
-    function sample_theta_CPA(theta_star)
-        # tht_h ∈ [0, theta_star] ∪ [π/2 - theta_star, π/2]
-        tht_h = rand(Bool) ? rand(Uniform(0.0, theta_star)) : rand(Uniform(π/2 - theta_star, π/2))
+    function sample_theta_CPA(angle_definition)
+        # tht_h ∈ [0, angle_definition] ∪ [π/2 - angle_definition, π/2]
+        tht_h = rand(Bool) ? rand(Uniform(0.0, angle_definition)) : rand(Uniform(π/2 - angle_definition, π/2))
     
-        # tht_J ∈ [−theta_star, 0] ∪ [−π/2, −π/2 + theta_star]
-        tht_J = rand(Bool) ? rand(Uniform(-theta_star, 0.0)) : rand(Uniform(-π/2, -π/2 + theta_star))
+        # tht_J ∈ [−angle_definition, 0] ∪ [−π/2, −π/2 + angle_definition]
+        tht_J = rand(Bool) ? rand(Uniform(-angle_definition, 0.0)) : rand(Uniform(-π/2, -π/2 + angle_definition))
     
         return tht_h, tht_J
     end
 
-    function sample_theta_small(theta_star)
-        # tht_h ∈ [0, theta_star] ∪ [π/2 - theta_star, π/2]
-        tht_h =  rand(Uniform(0.0, theta_star)) 
+    function sample_theta_small(angle_definition)
+        # tht_h ∈ [0, angle_definition] ∪ [π/2 - angle_definition, π/2]
+        tht_h =  rand(Uniform(0.0, angle_definition)) 
     
-        # tht_J ∈ [−theta_star, 0] ∪ [−π/2, −π/2 + theta_star]
-        tht_J = rand(Uniform(-theta_star, 0.0))
+        # tht_J ∈ [−angle_definition, 0] ∪ [−π/2, −π/2 + angle_definition]
+        tht_J = rand(Uniform(-angle_definition, 0.0))
     
         return tht_h, tht_J
     end
@@ -262,7 +262,7 @@ function training_circuit_generation_strict_perturbation(ansatz::trotter_ansatz_
     training_thetas = deepcopy(thetas)
     
     for _ in 1:num_samples
-        tht_h_perturbed, tht_J_perturbed = sample_function(theta_star)
+        tht_h_perturbed, tht_J_perturbed = sample_function(angle_definition)
         training_thetas[ansatz.theta_h_indices] .= tht_h_perturbed
         training_thetas[ansatz.theta_J_indices] .= tht_J_perturbed
         push!(training_thetas_list, copy(training_thetas))
@@ -272,39 +272,39 @@ function training_circuit_generation_strict_perturbation(ansatz::trotter_ansatz_
     return training_thetas_list
 end
 
-function training_circuit_generation_loose_perturbation(ansatz::trotter_ansatz_tfim,theta_star::Float64=pi/20; sample_function = nothing, num_samples::Int = 10)
+function training_circuit_generation_loose_perturbation(ansatz::trotter_ansatz_tfim,angle_definition::Float64=pi/20; sample_function = nothing, num_samples::Int = 10)
 
     """
     Generates a training set similar to the strict perturbation method, but keeps an angle if it is already in the correct interval. 
     """
 
-    if !(0.0 <= ansatz.theta_h <= theta_star) && !(pi/2 - theta_star <= ansatz.theta_h <= pi/2)
+    if !(0.0 <= ansatz.theta_h <= angle_definition) && !(pi/2 - angle_definition <= ansatz.theta_h <= pi/2)
         change_theta_h = true
     else
         change_theta_h = false
     end
-    if !(-theta_star <= ansatz.theta_J <= 0.0) && !(-pi/2 <= ansatz.theta_J <= -pi/2 + theta_star)
+    if !(-angle_definition <= ansatz.theta_J <= 0.0) && !(-pi/2 <= ansatz.theta_J <= -pi/2 + angle_definition)
         change_theta_J = true
     else
         change_theta_J = false
     end
     
-    function sample_theta_CPA(theta_star)
-        # tht_h ∈ [0, theta_star] ∪ [π/2 - theta_star, π/2]
-        tht_h = rand(Bool) ? rand(Uniform(0.0, theta_star)) : rand(Uniform(π/2 - theta_star, π/2))
+    function sample_theta_CPA(angle_definition)
+        # tht_h ∈ [0, angle_definition] ∪ [π/2 - angle_definition, π/2]
+        tht_h = rand(Bool) ? rand(Uniform(0.0, angle_definition)) : rand(Uniform(π/2 - angle_definition, π/2))
     
-        # tht_J ∈ [−theta_star, 0] ∪ [−π/2, −π/2 + theta_star]
-        tht_J = rand(Bool) ? rand(Uniform(-theta_star, 0.0)) : rand(Uniform(-π/2, -π/2 + theta_star))
+        # tht_J ∈ [−angle_definition, 0] ∪ [−π/2, −π/2 + angle_definition]
+        tht_J = rand(Bool) ? rand(Uniform(-angle_definition, 0.0)) : rand(Uniform(-π/2, -π/2 + angle_definition))
     
         return tht_h, tht_J
     end
 
-    function sample_theta_small(theta_star)
-        # tht_h ∈ [0, theta_star]
-        tht_h =  rand(Uniform(0.0, theta_star)) 
+    function sample_theta_small(angle_definition)
+        # tht_h ∈ [0, angle_definition]
+        tht_h =  rand(Uniform(0.0, angle_definition)) 
     
-        # tht_J ∈ [−theta_star, 0] ∪ [−π/2, −π/2 + theta_star]
-        tht_J = rand(Uniform(-theta_star, 0.0))
+        # tht_J ∈ [−angle_definition, 0] ∪ [−π/2, −π/2 + angle_definition]
+        tht_J = rand(Uniform(-angle_definition, 0.0))
     
         return tht_h, tht_J
     end
@@ -324,12 +324,12 @@ function training_circuit_generation_loose_perturbation(ansatz::trotter_ansatz_t
     
     for _ in 1:num_samples
         if change_theta_h
-            tht_h_perturbed, _ = sample_function(theta_star)
+            tht_h_perturbed, _ = sample_function(angle_definition)
         else 
             tht_h_perturbed = ansatz.theta_h
         end
         if change_theta_J
-            _, tht_J_perturbed = sample_function(theta_star)
+            _, tht_J_perturbed = sample_function(angle_definition)
         else 
             tht_J_perturbed = ansatz.theta_J
         end
@@ -1318,8 +1318,8 @@ function plot_MSE_csv_data(filename::String, xaxis::String)
 end
 
 
-function run_method(trotter, training_set,theta_star, noise_kind; min_abs_coeff = 0.0, min_abs_coeff_noisy =0.0, min_abs_coeff_target=0.0, num_samples=10, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
-    exact_expval_target, noisy_expval_target, corr_exp, rel_error_before, rel_error_after = full_run(trotter, theta_star, noise_kind; min_abs_coeff = min_abs_coeff, min_abs_coeff_noisy = min_abs_coeff_noisy, observable = obs_magnetization(trotter), training_set = training_set, depol_strength=depol_strength, dephase_strength=dephase_strength,depol_strength_double = depol_strength_double, dephase_strength_double = dephase_strength_double)  
+function run_method(trotter, training_set,angle_definition, noise_kind; min_abs_coeff = 0.0, min_abs_coeff_noisy =0.0, min_abs_coeff_target=0.0, num_samples=10, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
+    exact_expval_target, noisy_expval_target, corr_exp, rel_error_before, rel_error_after = full_run(trotter, angle_definition, noise_kind; min_abs_coeff = min_abs_coeff, min_abs_coeff_noisy = min_abs_coeff_noisy, observable = obs_magnetization(trotter), training_set = training_set, depol_strength=depol_strength, dephase_strength=dephase_strength,depol_strength_double = depol_strength_double, dephase_strength_double = dephase_strength_double)  
     MSE_ind =(exact_expval_target - corr_exp)^2
     return MSE_ind
 end
