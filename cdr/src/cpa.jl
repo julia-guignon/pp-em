@@ -1223,8 +1223,8 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
     end
     open("trotter_ZNE_$(noise_kind).log","a") do log
     str = format(
-    "{:>10s} {:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>8.2f}\n",
-    "ZNE", ansatz.steps,
+    "{:>10s} {:>10.2e}{:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>8.2f}\n",
+    "ZNE",angle_definition, ansatz.steps,
     ansatz.time, ansatz.J, ansatz.h,
      obs_string,
       ansatz.nqubits,
@@ -1249,8 +1249,8 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
     end
     open("trotter_CDR_$(noise_kind).log","a") do log
     str = format(
-    "{:>10s} {:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>8.2f}\n",
-    "CDR", ansatz.steps,ansatz.time, ansatz.J, ansatz.h, obs_string, ansatz.nqubits,
+    "{:>10s} {:>10.2e}{:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>8.2f}\n",
+    "CDR", angle_definition, ansatz.steps,ansatz.time, ansatz.J, ansatz.h, obs_string, ansatz.nqubits,
     exact_target, noisy_target,
     cdr_err_before, cdr_err_after,
     timetmp4 - time1
@@ -1282,8 +1282,8 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
     end
     open("trotter_vnCDR_$(noise_kind).log","a") do log
     str = format(
-    "{:>10s} {:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>8.2f}\n",
-    "vnCDR", ansatz.steps,ansatz.time, ansatz.J, ansatz.h, obs_string, ansatz.nqubits,
+    "{:>10s} {:>10.2e}{:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>8.2f}\n",
+    "vnCDR",angle_definition, ansatz.steps,ansatz.time, ansatz.J, ansatz.h, obs_string, ansatz.nqubits,
     exact_target, noisy_target,
     vn_err_before, vn_err_after,
     timetmp5 - time1
