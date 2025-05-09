@@ -77,17 +77,16 @@ function data_generation_TFIM()
     #system setup
     #theta = 0.01im # same as tstep
     #θ = theta
-    nq = 30
+    nq = 127
 
     # system parameters
     obs_i = 21
     obs_j = 20
     #observable = PauliString(nq, [:Z,:Z], [obs_i,obs_j])
-    nl =  30
-
+    nl =  30 
     tstep = 0.01
     time = range(tstep, tstep*nl, nl)
-
+    println("generating data for nq = ", nq, " nl = ", nl, " tstep = ", tstep)
     # exact expectation values calculations
     M = jordan_wigner_tfim(nq, 1.0, 0.0, 1.0) # J=1.0, h=1.0
     zz = zeros(length(time))

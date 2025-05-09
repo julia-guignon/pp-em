@@ -7,7 +7,8 @@
 #SBATCH --qos=serial
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --time=72:00:00
+#SBATCH --cpus-per-task=10 ##helvetios has 18 cores per node
+#SBATCH --time=6:00:00
 
 # Load necessary modules
 module load gcc openmpi openblas julia

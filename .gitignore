@@ -38,7 +38,7 @@
 **/client_secrets.json
 **/client_secret.json
 *creds*
-*.dat
+#*.dat
 *password*
 *.httr-oauth*
 
@@ -107,7 +107,7 @@ cover/
 *.pot
 
 # Django stuff:
-*.log
+#*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
