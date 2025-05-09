@@ -1217,7 +1217,7 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
     use_target=use_target)
 
     if record_fit_data
-        fn = format("ZNE_noise_{}_nq={:d}_nl={:d}_angledef={:.3e}.dat",noise_kind, ansatz.nqubits, ansatz.steps,angle_definition)
+        fn = format("ZNE_noise_{}_hval_{:.3e}_nq={:d}_nl={:d}_angledef={:.3e}.dat",noise_kind, ansatz.theta_h, ansatz.nqubits, ansatz.steps,angle_definition)
         mkpath(dirname(fn))
         CSV.write(fn,DataFrame(noise_levels=noise_levels, zne_levels=zne_levels))
     end
@@ -1285,7 +1285,7 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
     use_target=use_target, lambda=lambda)
     timetmp5 = time()
 
-    # ToDo: possibly add record_fit_data here
+    # ToDo possibly add record_fit_data here
 
     @logmsg SubInfo "→ vnCDR done in $(round(timetmp5 - timetmp4; digits=2)) s"
     if use_target
