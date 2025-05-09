@@ -1119,7 +1119,7 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
     noise_levels::Vector{Float64}=[1.0,1.5,2.0],
     lambda::Float64=0.0,
     use_target::Bool=true,
-    real_qc_noisy_data=nothing
+    real_qc_noisy_data=nothing, record_fit_data = false
 )
 
     """
@@ -1209,11 +1209,19 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
             depol_strength_double=depol_strength_double,
             dephase_strength_double=dephase_strength_double,
             record=false)
+    
     result_zne = zne(zne_levels;
     noise_levels=noise_levels,
     fit_type="linear",
     exact_target_exp_value = use_target ? exact_target : nothing,
     use_target=use_target)
+
+    if record_fit_data
+        fn = format("ZNE_noise_{}_nq={:d}_nl={:d}_angledef={:.3e}.dat",noise_kind, ansatz.nqubits, ansatz.steps,angle_definition)
+        mkpath(dirname(fn))
+        CSV.write(fn,DataFrame(noise_levels=noise_levels, zne_levels=zne_levels))
+    end
+
     timetmp3 = time()
     @logmsg SubInfo "→ ZNE done in $(round(timetmp3 - timetmp2; digits=2)) s"
     if use_target
@@ -1270,10 +1278,15 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
                                     depol_strength_double=depol_strength_double,
                                     dephase_strength_double=dephase_strength_double,
                                     record=false)
+
+
     result_vn = vnCDR(noisy_train_multi, exact_train, zne_levels;
     exact_target_exp_value = use_target ? exact_target : nothing,
     use_target=use_target, lambda=lambda)
     timetmp5 = time()
+
+    # ToDo: possibly add record_fit_data here
+
     @logmsg SubInfo "→ vnCDR done in $(round(timetmp5 - timetmp4; digits=2)) s"
     if use_target
     vn_corr, vn_err_after, vn_err_before = result_vn
