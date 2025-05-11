@@ -3,11 +3,11 @@ include("../src/cpa.jl")
 function IBM_utility_exp_4b_all()
     global_logger(UnbufferedLogger(stdout, SubInfo))
     
-    nq = 127
-    nl = 20 
+    nq = 10# 127
+    nl = 2# 0 
     T = nl/20
-    topology = ibmeagletopology
-    #topology = bricklayertopology(nq)
+    #topology = ibmeagletopology
+    topology = bricklayertopology(nq)
 
     IBM_angles = [0.3,1.0,0.7,0.0,0.2,0.8,0.5,0.1,0.4,1.5707,0.6]
     h_values = IBM_angles .* nl/(2*T)
@@ -30,19 +30,19 @@ function IBM_utility_exp_4b_all()
     depol_strength_double,dephase_strength_double = 0.0033,0.0033
     noise_levels=[1.0,1.3,1.5,1.8,2.0,2.2,2.5]; lambda=0.0; use_target=false
     
-    observable = PauliSum(nq); add!(observable,:Z,62)
-    #observable = PauliSum(nq); add!(observable,:Z,1)
+    #observable = PauliSum(nq); add!(observable,:Z,62)
+    observable = PauliSum(nq); add!(observable,:Z,1)
     collect_exact = Float64[]; collect_noisy = Float64[]
     collect_zne = Float64[]; collect_cdr = Float64[]; collect_vncd = Float64[]
-    
+    collect_vncd_lin = Float64[]; collect_zne_lin = Float64[]
     for (i,h) in enumerate(h_values)
     trotter = trotter_kickedising_setup(nq, nl, T, h; topology=topology)
     training_set = training_circuit_generation_loose_perturbation(trotter; sample_function="small", num_samples=10)
     
     exact, noisy,
-    zne_corr, cdr_corr, vn_corr,
-    _, _, _,
-    _, _, _ = full_run_all_methods(
+    zne_corr,zne_corr_lin, cdr_corr, vn_corr, vn_corr_lin,
+    _, _, _,_,_,
+    _, _, _,_,_ = full_run_all_methods(
     trotter, angle_definition, noise_kind;
     min_abs_coeff=min_abs_coeff, max_weight=max_weight,
     min_abs_coeff_noisy=min_abs_coeff_noisy,
@@ -52,14 +52,16 @@ function IBM_utility_exp_4b_all()
     depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double,
     noise_levels=noise_levels, lambda=lambda,
     use_target=use_target,
-    real_qc_noisy_data=IBM_unmitigated_vals[i], record_fit_data = true
+    real_qc_noisy_data=IBM_unmitigated_vals[i], record_fit_data = true, fit_type="exponential", fit_intercept = false
     )
     
     push!(collect_exact, exact)
     push!(collect_noisy, noisy)
     push!(collect_zne, zne_corr)
+    push!(collect_zne_lin, zne_corr_lin)
     push!(collect_cdr, cdr_corr)
     push!(collect_vncd, vn_corr)
+    push!(collect_vncd_lin, vn_corr_lin)
     end
     
      # log file for this utility run, stamped with current datetime
@@ -69,7 +71,7 @@ function IBM_utility_exp_4b_all()
     # write summary table to log
     open(logfname, "a") do io
         # header
-        println(io, "idx,h_value,Exact_targets,Noisy_targets,ZNE_outputs,CDR_outputs,vnCDR_outputs")
+        println(io, "idx,h_value,Exact_targets,Noisy_targets,ZNE_outputs,ZNE_outputs_lin,CDR_outputs,vnCDR_outputs, vnCDR_outputs_lin")
         # rows
         for i in 1:length(collect_exact)
             println(io, join((
@@ -78,8 +80,10 @@ function IBM_utility_exp_4b_all()
                 collect_exact[i],
                 collect_noisy[i],
                 collect_zne[i],
+                collect_zne_lin[i],
                 collect_cdr[i],
-                collect_vncd[i]
+                collect_vncd[i],
+                collect_vncd_lin[i]
             ), ","))
         end
     end

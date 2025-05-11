@@ -1146,7 +1146,8 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
     noise_levels::Vector{Float64}=[1.0,1.5,2.0],
     lambda::Float64=0.0,
     use_target::Bool=true,
-    real_qc_noisy_data=nothing, record_fit_data = false
+    real_qc_noisy_data=nothing, record_fit_data = false,fit_type = "linear",
+    fit_intercept = false
 )
 
     """
@@ -1239,6 +1240,13 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
     
     result_zne = zne(zne_levels;
     noise_levels=noise_levels,
+    fit_type=fit_type,
+    exact_target_exp_value = use_target ? exact_target : nothing,
+    use_target=use_target)
+
+    #add linear for comparison
+    result_zne_lin = zne(zne_levels;
+    noise_levels=noise_levels,
     fit_type="linear",
     exact_target_exp_value = use_target ? exact_target : nothing,
     use_target=use_target)
@@ -1250,23 +1258,45 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
     end
 
     timetmp3 = time()
-    @logmsg SubInfo "→ ZNE done in $(round(timetmp3 - timetmp2; digits=2)) s"
+    @logmsg SubInfo "→ ZNE $(fit_type) done in $(round(timetmp3 - timetmp2; digits=2)) s"
     if use_target
     zne_corr, zne_err_after, zne_err_before = result_zne
     else
     zne_corr = result_zne; zne_err_before = NaN; zne_err_after = NaN
     end
-    open("trotter_ZNE_$(noise_kind).log","a") do log
+
+    if use_target
+    zne_corr_lin, zne_err_after_lin, zne_err_before_lin = result_zne_lin
+    else
+    zne_corr_lin = result_zne_lin; zne_err_before_lin = NaN; zne_err_after_lin = NaN
+    end
+
+    open("trotter_ZNE_$(fit_type)_$(noise_kind).log","a") do log
     str = format(
-    "{:>10s} {:>10.2e}{:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>8.2f}\n",
+    "{:>10s} {:>10.2e}{:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e}{:>10.3e} {:>10.3e} {:>8.2f}\n",
     "ZNE",angle_definition, ansatz.steps,
     ansatz.time, ansatz.J, ansatz.h,
      obs_string,
       ansatz.nqubits,
     exact_target, 
-    noisy_target,
+    noisy_target,zne_corr,
     zne_err_before, zne_err_after,
     timetmp3 - time1
+    )
+    write(log, str)
+    end
+    
+    open("trotter_ZNE_linear_$(noise_kind).log","a") do log
+    str = format(
+    "{:>10s} {:>10.2e}{:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e}{:>10.3e} {:>10.3e} {:>8.2f}\n",
+    "ZNE",angle_definition, ansatz.steps,
+    ansatz.time, ansatz.J, ansatz.h,
+     obs_string,
+      ansatz.nqubits,
+    exact_target, 
+    noisy_target,zne_corr_lin,
+    zne_err_before_lin, zne_err_after_lin,
+    timetmp3 - time1 
     )
     write(log, str)
     end
@@ -1309,10 +1339,14 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
 
     result_vn = vnCDR(noisy_train_multi, exact_train, zne_levels;
     exact_target_exp_value = use_target ? exact_target : nothing,
-    use_target=use_target, lambda=lambda)
+    use_target=use_target, lambda=lambda, fit_intercept=fit_intercept, fit_type = fit_type)
     timetmp5 = time()
 
-    # ToDo possibly add record_fit_data here
+    #add hyperplane for comparison
+    result_vn_lin = vnCDR(noisy_train_multi, exact_train, zne_levels;
+    exact_target_exp_value = use_target ? exact_target : nothing,
+    use_target=use_target, lambda=0.0, fit_intercept=false, fit_type = "linear")
+
 
     @logmsg SubInfo "→ vnCDR done in $(round(timetmp5 - timetmp4; digits=2)) s"
     if use_target
@@ -1320,22 +1354,41 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
     else
     vn_corr = result_vn; vn_err_before = NaN; vn_err_after = NaN
     end
-    open("trotter_vnCDR_$(noise_kind).log","a") do log
+
+    if use_target
+    vn_corr_lin, vn_err_after_lin, vn_err_before_lin = result_vn_lin
+    else
+    vn_corr_lin = result_vn_lin; vn_err_before_lin = NaN; vn_err_after_lin = NaN
+    end
+
+    open("trotter_vnCDR_$(fit_type)_$(noise_kind).log","a") do log
     str = format(
-    "{:>10s} {:>10.2e}{:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>8.2f}\n",
+    "{:>10s} {:>10.2e}{:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e}  {:>10.3e} {:>10.3e} {:>8.2f}\n",
     "vnCDR",angle_definition, ansatz.steps,ansatz.time, ansatz.J, ansatz.h, obs_string, ansatz.nqubits,
-    exact_target, noisy_target,
+    exact_target, noisy_target,vn_corr,
     vn_err_before, vn_err_after,
     timetmp5 - time1
     )
     write(log, str)
     end
 
+        open("trotter_vnCDR_linear_$(noise_kind).log","a") do log
+    str = format(
+    "{:>10s} {:>10.2e}{:>3n}{:>6.2e}{:>10.2e}{:>10.2e} {:>2s} {:>5n} {:>10.3e} {:>10.3e} {:>10.3e} {:>10.3e}  {:>10.3e} {:>8.2f}\n",
+    "vnCDR",angle_definition, ansatz.steps,ansatz.time, ansatz.J, ansatz.h, obs_string, ansatz.nqubits,
+    exact_target, noisy_target,vn_corr_lin,
+    vn_err_before_lin, vn_err_after_lin,
+    timetmp5 - time1
+    )
+    write(log, str)
+    end
+
+
     @logmsg SubInfo "→ full_run_all_methods complete."
     return (exact_target, noisy_target,
-    zne_corr, cdr_corr, vn_corr,
-    zne_err_before, cdr_err_before, vn_err_before,
-    zne_err_after,  cdr_err_after,  vn_err_after)
+    zne_corr, zne_corr_lin, cdr_corr, vn_corr, vn_corr_lin,
+    zne_err_before, zne_err_before_lin, cdr_err_before, vn_err_before, vn_err_before_lin,
+    zne_err_after, zne_err_after_lin,  cdr_err_after, vn_err_after, vn_err_after_lin)
 end
 
 
