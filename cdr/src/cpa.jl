@@ -893,37 +893,51 @@ end
 
 #### vnCDR optimization function ####
 
+#1st method: vnCDR for final step
 function vnCDR(
     noisy_exp_values::Array{Float64,2},        # size (m circuits, n+1 noise levels)
     exact_exp_values::Vector{Float64},         # size m
     noisy_target_exp_value::Vector{Float64};  # size n+1
     exact_target_exp_value::Union{Nothing, Float64}=nothing,
     use_target::Bool=true,
-    lambda::Float64=0.0                         # regularization strength
+    lambda::Float64=0.0, fit_type = "linear" , fit_intercept = false                    
 )
 
     """
     Function that computes the vnCDR correction for a single noisy expectation value.
     """
 
-    model = lambda===0.0 ? LinearRegressor(fit_intercept = false) : RidgeRegressor(lambda=lambda,fit_intercept = false)
-
-
+    model = lambda===0.0 ? LinearRegressor(fit_intercept = fit_intercept) : RidgeRegressor(lambda=lambda,fit_intercept = fit_intercept)
+    
+    if fit_type === "exponential"
+        exact_exp_values = log.(exact_exp_values)
+        noisy_exp_values = log.(noisy_exp_values)
+        noisy_target_exp_value = log.(noisy_target_exp_value)
+    end
+    
     # Convert input matrix to DataFrame
     X = DataFrame(noisy_exp_values', :auto)
-
     mach = machine(model, X, exact_exp_values)
     fit!(mach)
     params = fitted_params(mach)
     @logmsg SubInfo "params , $(params)"
 
     # Manually compute prediction
-    coefs = [v for (_, v) in fitted_params(mach).coefs]
+    coefs = [v for (_, v) in params.coefs]
     @logmsg SubInfo "coefs , $(coefs)"
     @logmsg SubInfo "noisy_target_exp_value , $(noisy_target_exp_value)" 
     pred = coefs'* noisy_target_exp_value
-    @logmsg SubInfo "pred , $(pred)"
+
+    if fit_intercept
+        pred += params.intercept
+    end
+
+    if fit_type === "exponential"
+        pred = exp(pred)
+    end
     
+    @logmsg SubInfo "pred , $(pred)"
+        
     if use_target && exact_target_exp_value !== nothing
         rel_error_after = abs(exact_target_exp_value - pred) / abs(exact_target_exp_value)
         rel_error_before = abs(exact_target_exp_value - noisy_target_exp_value[end]) / abs(exact_target_exp_value)
@@ -933,14 +947,16 @@ function vnCDR(
     end
 end
 
+
 ##2nd method: vnCDR for every step
+
 function vnCDR(
     noisy_exp_values::Array{Float64,3},  # (matrix) from via vnCDR_training_trotter_time_evolution      # size (n+1 noise levels, m circuits, t+1 steps)
     exact_exp_values::Vector{Vector{Float64}},  # from  trotter_time_evolution
     noisy_target_exp_value::Array{Float64,2}; # (matrix) from zne_time_evolution
     exact_target_exp_value::Union{Nothing, Vector{Float64}}=nothing,
     use_target::Bool=true,
-    lambda::Float64=0.0
+    lambda::Float64=0.0, fit_type = "linear", fit_intercept = false                     # regularization strength
 )
 
     """
@@ -959,7 +975,7 @@ function vnCDR(
         noisy_target_exp_value[:,i];
         exact_target_exp_value = use_target ? (exact_target_exp_value === nothing ? nothing : exact_target_exp_value[i]) : nothing,
         use_target = use_target,
-        lambda = lambda
+        lambda = lambda, fit_type = fit_type, fit_intercept = fit_intercept
         )
 
         
@@ -975,6 +991,7 @@ function vnCDR(
 
     return use_target ? (corrected, rel_errors_after, rel_errors_before) : corrected
 end
+
 
 
 function full_run(ansatz, angle_definition::Float64, noise_kind::String;
