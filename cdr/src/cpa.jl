@@ -15,6 +15,8 @@ using LaTeXStrings
 using MLJLinearModels
 using MLJBase
 using Dates 
+using LsqFit
+using StatsModels
 
 ################# Logging Setup ####################
 struct UnbufferedLogger <: Logging.AbstractLogger
@@ -446,6 +448,14 @@ function zne(noisy_exp::Vector{Float64}; noise_levels = [1,1.5,2.0], fit_type = 
         ols = lm(@formula(y ~ x), training_data)
         cdr_em(x) = coef(ols)[1] + coef(ols)[2] * x
         corrected = cdr_em(0.0)
+
+    
+    elseif fit_type === "exponential"
+        model(x, p) = p[1] .+ p[2] .* exp.(-p[3] .* x)
+        p0 = [training_data.y[end], training_data.y[1] - training_data.y[end], 1.0]
+        fit = curve_fit(model, training_data.x, training_data.y, p0)
+        corrected = model(0.0, fit.param)
+    
     else @error("Fit type $(fit_type) not supported.")
     
     end
