@@ -127,7 +127,23 @@ function obs_magnetization(ansatz)
 end
 
 
-function trotter_time_evolution(ansatz; observable = nothing, special_thetas=nothing, noise_kind="noiseless", record=false, min_abs_coeff=0.0, max_weight=Inf, max_freq=Inf, max_sins=Inf, depol_strength=0.01, dephase_strength=0.01,depol_strength_double=0.0033, dephase_strength_double=0.0033, customtruncfunc=nothing) 
+function trotter_time_evolution(
+    ansatz;
+    observable = nothing,
+    special_thetas=nothing,
+    noise_kind="noiseless",
+    record=false,
+    min_abs_coeff=0.0,
+    max_weight=Inf,
+    max_freq=Inf,
+    max_sins=Inf,
+    depol_strength=0.01,
+    dephase_strength=0.01,
+    depol_strength_double=0.0033,
+    dephase_strength_double=0.0033,
+    customtruncfunc=nothing,
+    return_fmt="0") 
+
     """
     Function that computes the time evolution of the ansatz using the first order Trotter approximation exact time evolution operator.
     The function returns the overlap of the final state with the |0> state.
@@ -168,15 +184,31 @@ function trotter_time_evolution(ansatz; observable = nothing, special_thetas=not
     if record
         nparams = countparameters(ansatz.target_circuit)
         expvals_trotter = Float64[]   
+        terms_nbr = Float64[]   
         push!(expvals_trotter, overlapwithzero(obs))
         for i in 1:ansatz.steps
             psum = propagate!(circuit, obs, thetas[Int(nparams/ansatz.steps*(i-1)+1):Int(nparams/ansatz.steps*i)];min_abs_coeff=min_abs_coeff)
             push!(expvals_trotter, overlapwithzero(psum))
+            push!(terms_nbr, length(psum.terms))
         end
-        return expvals_trotter  
+        if return_fmt=="0"
+            return expvals_trotter
+        elseif return_fmt=="countterms"
+            return expvals_trotter, terms_nbr
+        else
+            error("Return format $return_fmt not supported (record mode used).")
+        end
     else 
         psum = propagate!(circuit, obs, thetas; min_abs_coeff=min_abs_coeff, max_weight=max_weight, max_freq=max_freq, max_sins=max_sins, customtruncfunc=customtruncfunc)
-        return overlapwithzero(psum)
+        if return_fmt=="0"
+            return overlapwithzero(psum)
+        elseif return_fmt=="psum"
+            return psum
+        elseif return_fmt=="countterms"
+            return overlapwithzero(psum), length(psum.terms)
+        else
+            error("Return format $return_fmt not supported.")
+        end
     end
 end
 
@@ -331,11 +363,12 @@ function thermalStateComparison(H, circuit, beta, theta, nq; max_weight=nq, min_
     return distance
 end
 
-function thermalStateExpectation(circuit, nl, nq, operator; max_weight=nq, min_abs_coeff=0)
+function thermalStateExpectation(circuit, nl, nq, operator; max_weight=nq, min_abs_coeff=0, return_fmt="0")
     pstr = PauliString(nq, :I, 1)
     psum = PauliSum(pstr)
 
     expectations = Float64[]
+    terms_nbr = Float64[]
 
     @showprogress for layers in 1:nl
         psum = propagate!(circuit, psum; max_weight, min_abs_coeff, normalization=true)
@@ -343,8 +376,16 @@ function thermalStateExpectation(circuit, nl, nq, operator; max_weight=nq, min_a
         # the extra division is the also rescale expectations without continually dividing trough
         expectation = getcoeff(psum, operator) / getcoeff(psum, pstr)
         expectations = push!(expectations, expectation)
+        terms_nbr = push!(terms_nbr, length(psum.terms))
     end
-    return expectations
+    if return_fmt=="0"
+        return expectations
+    elseif return_fmt=="countterms"
+        return expectations, terms_nbr
+    else
+        error("Return format $return_fmt not supported.")
+    end
+    
 end
 
 function XMatrix(n::Int, i::Int)
