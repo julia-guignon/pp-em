@@ -463,9 +463,9 @@ function zne(noisy_exp::Vector{Float64}; noise_levels = [1,1.5,2.0], fit_type = 
     # ToDo: add polynomial fit (Richardson extrapolation) for comparison
     
     if use_target && exact_target_exp_value !== nothing
-        rel_error_after = abs(exact_target_exp_value - corrected) / abs(exact_target_exp_value)
-        rel_error_before = abs(exact_target_exp_value - noisy_exp[1]) / abs(exact_target_exp_value) #fixed to the first noise_level to be one
-        return corrected, rel_error_after, rel_error_before
+        abs_error_after = abs(exact_target_exp_value - corrected) #/ abs(exact_target_exp_value)
+        abs_error_before = abs(exact_target_exp_value - noisy_exp[1]) #/ abs(exact_target_exp_value) #fixed to the first noise_level to be one
+        return corrected, abs_error_after, abs_error_before
     else
         return corrected
 
@@ -479,19 +479,19 @@ function zne(noisy_exp::Matrix{Float64}; noise_levels = [1,1.5,2.0], fit_type = 
     Function that computes the ZNE correction for a set of noisy expectation values to visualize the time evolution of the ZNE correction.
     """
 
-    nsteps = size(noisy_exp,2) #this is one more than nsteps
-    corrected = Vector{Float64}(undef, nsteps) # undef allocates memory
-    rel_errors_after = Vector{Float64}()
-    rel_errors_before = Vector{Float64}()
-    for i in 2:nsteps
+    nsteps = size(noisy_exp,2) #this is one more than nsteps (includes time 0)
+    corrected = Vector{Float64}(undef, nsteps) # undef allocates memory (set to 0)
+    abs_errors_after = Vector{Float64}()
+    abs_errors_before = Vector{Float64}()
+    for i in 1:nsteps 
         result = zne(noisy_exp[:,i]; noise_levels = noise_levels, 
         fit_type = fit_type,
          exact_target_exp_value = use_target ? (exact_target_exp_value === nothing ? nothing : exact_target_exp_value[i]) : nothing,
          use_target = use_target)
          if use_target && exact_target_exp_value !== nothing
             corrected[i], err_after, err_before = result
-            push!(rel_errors_after, err_after)
-            push!(rel_errors_before, err_before)
+            push!(abs_errors_after, err_after)
+            push!(abs_errors_before, err_before)
          else
             corrected[i] = result
             #corrected[i] = max(corrected[i], 1e-16)
@@ -499,7 +499,7 @@ function zne(noisy_exp::Matrix{Float64}; noise_levels = [1,1.5,2.0], fit_type = 
 
     end
 
-        return use_target ? (corrected, rel_errors_after, rel_errors_before) : corrected
+        return use_target ? (corrected, abs_errors_after, abs_errors_before) : corrected
 
 end
 
@@ -799,9 +799,9 @@ function cdr(
     corrected = cdr_em(noisy_target_exp_value)
 
     if use_target && exact_target_exp_value !== nothing
-        rel_error_after = abs(exact_target_exp_value - corrected) / abs(exact_target_exp_value)
-        rel_error_before = abs(exact_target_exp_value - noisy_target_exp_value) / abs(exact_target_exp_value)
-        return corrected, rel_error_after, rel_error_before
+        abs_error_after = abs(exact_target_exp_value - corrected) #/ abs(exact_target_exp_value)
+        abs_error_before = abs(exact_target_exp_value - noisy_target_exp_value) #/ abs(exact_target_exp_value)
+        return corrected, abs_error_after, abs_error_before
     else
         return corrected
     end
@@ -821,10 +821,10 @@ function cdr(
 
     nsteps = length(noisy_target_exp_value)
     corrected = Vector{Float64}(undef, nsteps)
-    rel_errors_after = Float64[]
-    rel_errors_before = Float64[]
+    abs_errors_after = Float64[]
+    abs_errors_before = Float64[]
 
-    for i in 2:nsteps
+    for i in 1:nsteps
 
         exact_exp_values_last  = [row[i] for row in exact_exp_values] # necessary for nested vector format
         noisy_exp_values_last  = [row[i] for row in noisy_exp_values]
@@ -837,14 +837,14 @@ function cdr(
         )
         if use_target && exact_target_exp_value !== nothing
             corrected[i], err_after, err_before = result
-            push!(rel_errors_after, err_after)
-            push!(rel_errors_before, err_before)
+            push!(abs_errors_after, err_after)
+            push!(abs_errors_before, err_before)
         else
             corrected[i] = result
         end
     end
 
-    return use_target ? (corrected, rel_errors_after, rel_errors_before) : corrected
+    return use_target ? (corrected, abs_errors_after, abs_errors_before) : corrected
 end
 
 # CDR with weighted linear regression
@@ -863,10 +863,10 @@ function cdr(
     nsteps = length(noisy_exp_values[1])
     ncircuits = length(noisy_exp_values)
     corrected = Vector{Float64}(undef, nsteps)
-    rel_errors_after = Float64[]
-    rel_errors_before = Float64[]
+    abs_errors_after = Float64[]
+    abs_errors_before = Float64[]
 
-    for t in 2:nsteps
+    for t in 1:nsteps
         x_all, y_all, w_all = Float64[], Float64[], Float64[]
         for c in 1:ncircuits, τ in 1:t
             push!(x_all, noisy_exp_values[c][τ])
@@ -880,15 +880,15 @@ function cdr(
 
         corrected[t] = cdr_em(noisy_target_exp_value[t])
         if use_target && exact_target_exp_value !== nothing
-            err_after = abs(exact_target_exp_value[t] - corrected[t]) / abs(exact_target_exp_value[t])
-            err_before = abs(exact_target_exp_value[t] - noisy_target_exp_value[t]) / abs(exact_target_exp_value[t])
-            push!(rel_errors_after, err_after)
-            push!(rel_errors_before, err_before)
+            err_after = abs(exact_target_exp_value[t] - corrected[t]) #/ abs(exact_target_exp_value[t])
+            err_before = abs(exact_target_exp_value[t] - noisy_target_exp_value[t]) #/ abs(exact_target_exp_value[t])
+            push!(abs_errors_after, err_after)
+            push!(abs_errors_before, err_before)
         end
 
     end
 
-    return use_target ? (corrected, rel_errors_after, rel_errors_before) : corrected
+    return use_target ? (corrected, abs_errors_after, abs_errors_before) : corrected
 end
 
 #### vnCDR optimization function ####
@@ -909,6 +909,10 @@ function vnCDR(
 
     model = lambda===0.0 ? LinearRegressor(fit_intercept = fit_intercept) : RidgeRegressor(lambda=lambda,fit_intercept = fit_intercept)
     
+    if use_target && exact_target_exp_value !== nothing
+        abs_error_before = abs(exact_target_exp_value - noisy_target_exp_value[end]) 
+    end 
+
     if fit_type === "exponential"
         exact_exp_values = log.(exact_exp_values)
         noisy_exp_values = log.(noisy_exp_values)
@@ -939,9 +943,9 @@ function vnCDR(
     @logmsg SubInfo "pred , $(pred)"
         
     if use_target && exact_target_exp_value !== nothing
-        rel_error_after = abs(exact_target_exp_value - pred) / abs(exact_target_exp_value)
-        rel_error_before = abs(exact_target_exp_value - noisy_target_exp_value[end]) / abs(exact_target_exp_value)
-        return pred, rel_error_after, rel_error_before
+        abs_error_after = abs(exact_target_exp_value - pred) #/ abs(exact_target_exp_value)
+        #abs_error_before = abs(exact_target_exp_value - noisy_target_exp_value[end]) #/ abs(exact_target_exp_value)
+        return pred, abs_error_after, abs_error_before
     else
         return pred
     end
@@ -963,11 +967,11 @@ function vnCDR(
     Function that computes the vnCDR correction for a set of noisy expectation values to visualize the time evolution of the vnCDR correction.
     """
 
-    nsteps = size(noisy_exp_values, 3)
+    nsteps = size(noisy_exp_values, 3) # one more than nsteps (includes time 0)
     corrected = Vector{Float64}(undef, nsteps)
-    rel_errors_after = Float64[] # vector 
-    rel_errors_before = Float64[] 
-    for i in 2:nsteps
+    abs_errors_after = Float64[] # vector 
+    abs_errors_before = Float64[] 
+    for i in 1:nsteps
         exact_exp_values_last  = [row[i] for row in exact_exp_values]
         result = vnCDR(
         noisy_exp_values[:, :, i],
@@ -982,14 +986,14 @@ function vnCDR(
 
         if use_target && exact_target_exp_value !== nothing
             corrected[i], err_after, err_before = result
-            push!(rel_errors_after, err_after)
-            push!(rel_errors_before, err_before)
+            push!(abs_errors_after, err_after)
+            push!(abs_errors_before, err_before)
         else
             corrected[i] = result
         end
     end
 
-    return use_target ? (corrected, rel_errors_after, rel_errors_before) : corrected
+    return use_target ? (corrected, abs_errors_after, abs_errors_before) : corrected
 end
 
 
@@ -1004,7 +1008,7 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
 
     """
     Function which runs the full CDR pipeline.
-    The function returns the CDR-corrected expectation value and the relative error before and after the correction (if available) and logs the results.
+    The function returns the CDR-corrected expectation value and the absative error before and after the correction (if available) and logs the results.
     """
 
     @logmsg SubInfo "ready to ruuuuuummmble"
@@ -1083,11 +1087,11 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
     end
 
     if use_target
-        corr_exp, rel_error_after, rel_error_before = corr_exp_result
+        corr_exp, abs_error_after, abs_error_before = corr_exp_result
     else
         corr_exp = corr_exp_result
-        rel_error_after = isa(corr_exp, Vector) ? zeros(length(corr_exp)) : NaN
-        rel_error_before = isa(corr_exp, Vector) ? zeros(length(corr_exp)) : NaN
+        abs_error_after = isa(corr_exp, Vector) ? zeros(length(corr_exp)) : NaN
+        abs_error_before = isa(corr_exp, Vector) ? zeros(length(corr_exp)) : NaN
     end
 
     timetmp2 = time()
@@ -1108,25 +1112,25 @@ function full_run(ansatz, angle_definition::Float64, noise_kind::String;
                 non_replaced_gates, num_samples, angle_definition, min_abs_coeff,
                 min_abs_coeff_noisy, min_abs_coeff_target, max_weight,
                 use_target ? exact_expval_target[i] : NaN,
-                noisy_expval_target[i], corr_exp[i], rel_error_before[i], rel_error_after[i],
-                rel_error_before[i] / max(rel_error_after[i], 1e-12), timetmp2 - time1)
+                noisy_expval_target[i], corr_exp[i], abs_error_before[i], abs_error_after[i],
+                abs_error_before[i] / max(abs_error_after[i], 1e-12), timetmp2 - time1)
             write(log, str)
         end
     else
-        ratio_rel_error = rel_error_before / max(rel_error_after, 1e-12)
+        ratio_abs_error = abs_error_before / max(abs_error_after, 1e-12)
         str = format("{:>10s} {:>10s} {:>5n} {:>5n} {:>6.2e} {:>10.2e} {:>10.2e}{:>5n} {:>5n}{:>10.2e} {:>10.2e} {:>10.2e} {:>10.2e}  {:>5n} {:>10.3e} {:>10.2e}{:>10.2e}  {:>10.3e} {:>10.3e} {:>10.3e} {:>10.2e}\n",
             cdr_method, obs_string, ansatz.nqubits, ansatz.steps, ansatz.time, ansatz.J, ansatz.h,
             non_replaced_gates, num_samples, angle_definition, min_abs_coeff,
             min_abs_coeff_noisy, min_abs_coeff_target, max_weight,
             use_target ? exact_expval_target[end] : 0.0,
-            noisy_expval_target[1], corr_exp, rel_error_before, rel_error_after,
-            ratio_rel_error, timetmp2 - time1)
+            noisy_expval_target[1], corr_exp, abs_error_before, abs_error_after,
+            ratio_abs_error, timetmp2 - time1)
         write(log, str)
     end
 
     close(log)
 
-    return exact_expval_target, noisy_expval_target, corr_exp, rel_error_before, rel_error_after
+    return exact_expval_target, noisy_expval_target, corr_exp, abs_error_before, abs_error_after
 end
 
 function full_run_all_methods(ansatz::trotter_ansatz_tfim,
@@ -1152,7 +1156,7 @@ function full_run_all_methods(ansatz::trotter_ansatz_tfim,
 
     """
     Function which runs the all error mitigation methods (CDR, ZNE, vnCDR) for the given ansatz.
-    The function returns the CDR-corrected expectation value and the relative error before and after the correction (if available) and logs the results.
+    The function returns the CDR-corrected expectation value and the absative error before and after the correction (if available) and logs the results.
     """
     
     @logmsg SubInfo "→ Starting full_run_all_methods (noise_kind=$noise_kind, σ=$angle_definition)"
@@ -1412,7 +1416,7 @@ end
 
 
 function run_method(trotter, training_set,angle_definition, noise_kind; min_abs_coeff = 0.0, min_abs_coeff_noisy =0.0, min_abs_coeff_target=0.0, num_samples=10, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
-    exact_expval_target, noisy_expval_target, corr_exp, rel_error_before, rel_error_after = full_run(trotter, angle_definition, noise_kind; min_abs_coeff = min_abs_coeff, min_abs_coeff_noisy = min_abs_coeff_noisy, observable = obs_magnetization(trotter), training_set = training_set, depol_strength=depol_strength, dephase_strength=dephase_strength,depol_strength_double = depol_strength_double, dephase_strength_double = dephase_strength_double)  
+    exact_expval_target, noisy_expval_target, corr_exp, abs_error_before, abs_error_after = full_run(trotter, angle_definition, noise_kind; min_abs_coeff = min_abs_coeff, min_abs_coeff_noisy = min_abs_coeff_noisy, observable = obs_magnetization(trotter), training_set = training_set, depol_strength=depol_strength, dephase_strength=dephase_strength,depol_strength_double = depol_strength_double, dephase_strength_double = dephase_strength_double)  
     MSE_ind =(exact_expval_target - corr_exp)^2
     return MSE_ind
 end
