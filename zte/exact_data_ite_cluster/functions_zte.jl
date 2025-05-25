@@ -180,7 +180,7 @@ function thermalStateExpectation(circuit, nl, nq, operator; max_weight=nq, min_a
     pstr = PauliString(nq, :I, 1)
     psum = PauliSum(pstr)
 
-    println(circuit)
+    # println(circuit)
 
     expectations = Float64[]
     terms_nbr = Float64[]
@@ -192,10 +192,10 @@ function thermalStateExpectation(circuit, nl, nq, operator; max_weight=nq, min_a
         expectation = getcoeff(psum, operator) / getcoeff(psum, pstr)
         expectations = push!(expectations, expectation)
         terms_nbr = push!(terms_nbr, length(psum.terms))
-        println(getcoeff(psum, operator), " ", getcoeff(psum, pstr))
+        # println(getcoeff(psum, operator), " ", getcoeff(psum, pstr))
     end
-    println("Expectations: ", expectations)
-    println("Terms number: ", terms_nbr)
+    # println("Expectations: ", expectations)
+    # println("Terms number: ", terms_nbr)
     if return_fmt=="0"
         return expectations
     elseif return_fmt=="countterms"
@@ -302,6 +302,7 @@ function run_or_read(model, circuit, nq, nl, tstep, obs_i, obs_j, max_weight, mi
     try
         @assert run==false
         open(fn, "r") do log
+            println("reading $fn")
             data = CSV.read(log, DataFrame)
             time_file = data[:,1]
             expectation = data[:,2]
