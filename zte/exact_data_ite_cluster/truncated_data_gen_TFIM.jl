@@ -34,7 +34,7 @@ function run_zte()
         max_weight_str = string(max_weight)
     end
 
-    fn = format("{}_nq={:d}_nl={:d}_theta={:.3e}_obsi={:d}_obsj={:d}_maxweight={}", model, nq, nl, tstep, obs_i, obs_j, max_weight_str)    
+    # fn = format("{}_nq={:d}_nl={:d}_theta={:.3e}_obsi={:d}_obsj={:d}_maxweight={}", model, nq, nl, tstep, obs_i, obs_j, max_weight_str)    
 
     # initialize the plot
     scatter(ylabel=L"$\langle Z_{20}Z_{21} \rangle$", xlabel=L"time", title = L"$H = \sum_{i=1} -Z_i - X_iX_{i+1}$")
@@ -49,8 +49,8 @@ function run_zte()
     # get truncated expectation values
     expvals = Vector{Vector{Float64}}()
     terms_nbrs = Vector{Vector{Float64}}()
-    for j in trunc_coeffs
-        expectation, terms_nbr = run_or_read("TFIM", circuitTFIM, nq, nl, tstep, obs_i, obs_j, max_weight, j; run=true)
+    @time for j in trunc_coeffs
+        expectation, terms_nbr = run_or_read("TFIM", circuitTFIM, nq, nl, tstep, obs_i, obs_j, max_weight, j)#; run=true)
         plot!(time, expectation, label = L"$2^{%$(round(log2(j), digits=2))}$", legend=:topleft, lw=2, markersize=4, marker=:circle, alpha=0.5)
         push!(expvals, expectation)
         push!(terms_nbrs, terms_nbr)
