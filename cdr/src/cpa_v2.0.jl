@@ -106,21 +106,47 @@ function kickedisingcircuit(nq, nl; topology=nothing)
     return circuit
 end
 
+function tiltedisingcircuit(nq, nl; topology=nothing)
+
+    """
+    generates a circuit with nq qubits and nl layers represented tilted TFIM
+    """
+
+    if isnothing(topology)
+        topology = bricklayertopology(nq)
+    end
+    
+    xlayer(circuit) = append!(circuit, (PauliRotation([:X], [qind]) for qind in 1:nq))
+    zlayer(circuit) = append!(circuit, (PauliRotation([:Z], [qind]) for qind in 1:nq))
+    zzlayer(circuit) = append!(circuit, (PauliRotation([:Z, :Z], pair) for pair in topology))
+    circuit = Gate[]
+
+    for _ in 1:nl
+        zzlayer(circuit)
+        xlayer(circuit)
+        zlayer(circuit)
+    end
+
+    return circuit
+end
+
 
 #################### Time evolution ####################
 
-function define_thetas(circuit, J, h, dt)
+function define_thetas(circuit, dt, J=2.0, h=1.0, U=1.0)
     rzz_indices = getparameterindices(circuit, PauliRotation, [:Z, :Z])
     rx_indices = getparameterindices(circuit, PauliRotation, [:X])
+    rz_indices = getparameterindices(circuit, PauliRotation, [:Z])
 
     nparams = countparameters(circuit)
 
     thetas = zeros(nparams)
     thetas[rzz_indices] .= - J * dt * 2
     thetas[rx_indices] .= h * dt * 2
+    thetas[rz_indices] .= U * dt * 2
 
     return thetas
-end
+end 
 
 function trotter_time_evolution(nq, nl, topology, layer; observable = nothing, special_thetas=nothing, noise_kind="none", min_abs_coeff=0.0, max_weight = Inf, noise_level = 1.0, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
 
@@ -195,7 +221,7 @@ end
 
 
 ######### Training circuits related ##########
-function training_circuit_generation_loose_perturbation(layer, J, h, dt, angle_definition::Float64=pi/20; sample_function = nothing, num_samples::Int = 10)
+function training_circuit_generation_loose_perturbation(layer, dt, J, h, angle_definition::Float64=pi/20, U=0.0; sample_function = nothing, num_samples::Int = 10)
 
     """
     Generates a training set similar to the strict perturbation method, but keeps an angle if it is already in the correct interval. 
@@ -203,6 +229,7 @@ function training_circuit_generation_loose_perturbation(layer, J, h, dt, angle_d
 
     theta_J = -2*J*dt
     theta_h = 2*h*dt
+    theta_U = 2*U*dt
 
     if !(0.0 <= theta_h <= angle_definition) && !(pi/2 - angle_definition <= theta_h <= pi/2)
         change_theta_h = true
@@ -214,6 +241,11 @@ function training_circuit_generation_loose_perturbation(layer, J, h, dt, angle_d
     else
         change_theta_J = false
     end
+    if !(0.0 <= theta_U <= angle_definition) && !(pi/2 - angle_definition <= theta_U <= pi/2)
+        change_theta_U = true
+    else
+        change_theta_U = false
+    end
     
     function sample_theta_CPA(angle_definition)
         # tht_h ∈ [0, angle_definition] ∪ [π/2 - angle_definition, π/2]
@@ -221,8 +253,11 @@ function training_circuit_generation_loose_perturbation(layer, J, h, dt, angle_d
     
         # tht_J ∈ [−angle_definition, 0] ∪ [−π/2, −π/2 + angle_definition]
         tht_J = rand(Bool) ? rand(Uniform(-angle_definition, 0.0)) : rand(Uniform(-π/2, -π/2 + angle_definition))
+
+        # tht_U ∈ [0, angle_definition] ∪ [π/2 - angle_definition, π/2]
+        tht_U = rand(Bool) ? rand(Uniform(0.0, angle_definition)) : rand(Uniform(π/2 - angle_definition, π/2))
     
-        return tht_h, tht_J
+        return tht_h, tht_J, tht_U
     end
 
     function sample_theta_small(angle_definition)
@@ -231,8 +266,11 @@ function training_circuit_generation_loose_perturbation(layer, J, h, dt, angle_d
     
         # tht_J ∈ [−angle_definition, 0] ∪ [−π/2, −π/2 + angle_definition]
         tht_J = rand(Uniform(-angle_definition, 0.0))
+        
+        # tht_U ∈ [0, angle_definition]
+        tht_U =  rand(Uniform(0.0, angle_definition)) 
     
-        return tht_h, tht_J
+        return tht_h, tht_J, tht_U
     end
     
     if sample_function === nothing
@@ -245,11 +283,12 @@ function training_circuit_generation_loose_perturbation(layer, J, h, dt, angle_d
 
 
     training_thetas_list = Vector{Vector{Float64}}()
-    thetas = define_thetas(layer, J, h, dt)
+    thetas = define_thetas(layer, dt, J, h, U)
     training_thetas = deepcopy(thetas)
     
     theta_J_indices = getparameterindices(layer, PauliRotation, [:Z,:Z]) 
     theta_h_indices = getparameterindices(layer, PauliRotation, [:X])
+    theta_U_indices = getparameterindices(layer, PauliRotation, [:Z])
 
     for _ in 1:num_samples
         if change_theta_h
@@ -262,8 +301,14 @@ function training_circuit_generation_loose_perturbation(layer, J, h, dt, angle_d
         else 
             tht_J_perturbed = theta_J
         end
+        if change_theta_U
+            _, tht_U_perturbed = sample_function(angle_definition)
+        else 
+            tht_U_perturbed = theta_U
+        end
         training_thetas[theta_h_indices] .= tht_h_perturbed
         training_thetas[theta_J_indices] .= tht_J_perturbed
+        training_thetas[theta_U_indices] .= tht_U_perturbed
         push!(training_thetas_list, copy(training_thetas))
     
     end
@@ -272,7 +317,7 @@ function training_circuit_generation_loose_perturbation(layer, J, h, dt, angle_d
 end
 
 
-function training_circuit_generation_strict_perturbation(layer, J, h, dt, angle_definition::Float64 = pi/20; sample_function = nothing, num_samples::Int = 10)
+function training_circuit_generation_strict_perturbation(layer, dt, J, h, angle_definition::Float64 = pi/20, U=0.0; sample_function = nothing, num_samples::Int = 10)
 
     """
     Generates a training set according to the CPA approach (http://arxiv.org/abs/2412.09518). We do not use data augmentation here (in the form of ZNE or PEC, then referred to as CPDR-ZNE or CPDR-PEC respectively), but stick to standard CPA.
@@ -309,7 +354,7 @@ function training_circuit_generation_strict_perturbation(layer, J, h, dt, angle_
 
 
     training_thetas_list = Vector{Vector{Float64}}()
-    thetas = define_thetas(layer, J, h, dt)
+    thetas = define_thetas(layer, dt, J, h)
     training_thetas = deepcopy(thetas)
     
     theta_J_indices = getparameterindices(layer, PauliRotation, [:Z,:Z]) 
@@ -333,23 +378,23 @@ function training_trotter_time_evolution(nq, nl, topology, layer, training_theta
     The function returns the overlap of the final state with the |0> state (Heisenberg picture). 
     """
 
-    exact_expvals = Vector{Vector{Float64}}()
-    for thetas in training_thetas
-        push!(exact_expvals, trotter_time_evolution(nq, nl, topology, layer; observable = observable, special_thetas=thetas, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff, max_weight = max_weight, noise_level = noise_level, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double))
+    exact_expvals = Array{Float64,2}(undef, length(training_thetas), nl+1)
+    for (i, thetas) in enumerate(training_thetas)
+        exact_expvals[i, :] = trotter_time_evolution(nq, nl, topology, layer; observable = observable, special_thetas=thetas, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff, max_weight = max_weight, noise_level = noise_level, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double)
     end
     return exact_expvals
 end
 
 
 ######### ZNE isolated implementation ##########
-function zne_time_evolution(nq, nl, topology, layer, J, h, dt; observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, noise_levels = [1,1.5,2.0], depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
+function zne_time_evolution(nq, nl, topology, layer, dt, J, h, U=0.0; observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, noise_levels = [1,1.5,2.0], depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
 
     """
     Function that computes the time evolution of the ansatz using the first order Trotter approximation exact time evolution operator at different noise levels.
     """
 
     expvals = Array{Float64,2}(undef, length(noise_levels), nl+1)
-    thetas = define_thetas(layer, J, h, dt)
+    thetas = define_thetas(layer, dt, J, h, U)
     for (idx,i) in enumerate(noise_levels)
         expval_target = trotter_time_evolution(nq, nl, topology, layer; special_thetas=thetas, observable = observable, noise_kind=noise_kind, noise_level = i,min_abs_coeff=min_abs_coeff,max_weight = max_weight, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double)
         for j in 1:length(expval_target)
@@ -388,8 +433,6 @@ function zne(noisy_exp::Vector{Float64}; noise_levels = [1,1.5,2.0], fit_type = 
     
     end
 
-    # ToDo: add polynomial fit (Richardson extrapolation) for comparison
-    
     if use_target && exact_target_exp_value !== nothing
         abs_error_after = abs(exact_target_exp_value - corrected) #/ abs(exact_target_exp_value)
         abs_error_before = abs(exact_target_exp_value - noisy_exp[1]) #/ abs(exact_target_exp_value) #fixed to the first noise_level to be one
@@ -408,9 +451,9 @@ function zne(noisy_exp::Matrix{Float64}; noise_levels = [1,1.5,2.0], fit_type = 
     """
 
     nsteps = size(noisy_exp,2) #this is one more than nsteps (includes time 0)
-    corrected = Vector{Float64}(undef, nsteps) # undef allocates memory (set to 0)
-    abs_errors_after = Vector{Float64}()
-    abs_errors_before = Vector{Float64}()
+    corrected = Array{Float64, 1}(undef, nsteps) # undef allocates memory (set to 0)
+    abs_errors_after = Float64[]
+    abs_errors_before = Float64[]
     for i in 1:nsteps 
         result = zne(noisy_exp[:,i]; noise_levels = noise_levels, 
         fit_type = fit_type,
@@ -460,8 +503,8 @@ end
 ### 3 methods for CDR
 
 function cdr(
-    noisy_exp_values::Vector{Float64},
-    exact_exp_values::Vector{Float64},
+    noisy_exp_values::Array{Float64, 1},
+    exact_exp_values::Array{Float64, 1},
     noisy_target_exp_value::Float64;
     exact_target_exp_value::Union{Nothing, Float64}=nothing,
     use_target::Bool=true)
@@ -486,10 +529,10 @@ end
 
 
 function cdr(
-    noisy_exp_values::Vector{Vector{Float64}},
-    exact_exp_values::Vector{Vector{Float64}},
-    noisy_target_exp_value::Vector{Float64};
-    exact_target_exp_value::Union{Nothing, Vector{Float64}}=nothing,
+    noisy_exp_values::Array{Float64, 2},
+    exact_exp_values::Array{Float64, 2},
+    noisy_target_exp_value::Array{Float64, 1};
+    exact_target_exp_value::Union{Nothing, Array{Float64, 1}}=nothing,
     use_target::Bool=true)
 
     """
@@ -503,8 +546,8 @@ function cdr(
 
     for i in 1:nsteps
 
-        exact_exp_values_last  = [row[i] for row in exact_exp_values] # necessary for nested vector format
-        noisy_exp_values_last  = [row[i] for row in noisy_exp_values]
+        exact_exp_values_last  = exact_exp_values[:, i] 
+        noisy_exp_values_last  = noisy_exp_values[:, i]
         result = cdr(
             noisy_exp_values_last,
             exact_exp_values_last,
@@ -526,28 +569,28 @@ end
 
 # CDR with weighted linear regression
 function cdr(
-    noisy_exp_values::Vector{Vector{Float64}},
-    exact_exp_values::Vector{Vector{Float64}},
-    noisy_target_exp_value::Vector{Float64},
+    noisy_exp_values::Array{Float64, 2},
+    exact_exp_values::Array{Float64, 2},
+    noisy_target_exp_value::Array{Float64, 1},
     decay_weights::Vector{Vector{Float64}};
-    exact_target_exp_value::Union{Nothing, Vector{Float64}}=nothing,
+    exact_target_exp_value::Union{Nothing, Array{Float64, 1}}=nothing,
     use_target::Bool=true)
 
     """
     Function that computes the CDR correction for a set of noisy expectation values to visualize the time evolution of the CDR correction.
     Uses weighted linear regression to compute the correction.
     """
-    nsteps = length(noisy_exp_values[1])
-    ncircuits = length(noisy_exp_values)
-    corrected = Vector{Float64}(undef, nsteps)
-    abs_errors_after = Float64[]
-    abs_errors_before = Float64[]
+    nsteps = size(noisy_exp_values)[2]
+    ncircuits = size(noisy_exp_values)[1]
+    corrected = Array{Float64, 1}(undef, nsteps)
+    abs_errors_after = Array{Float64, 1}(undef, nsteps)
+    abs_errors_before = Array{Float64, 1}(undef, nsteps)
 
     for t in 1:nsteps
         x_all, y_all, w_all = Float64[], Float64[], Float64[]
         for c in 1:ncircuits, τ in 1:t
-            push!(x_all, noisy_exp_values[c][τ])
-            push!(y_all, exact_exp_values[c][τ])
+            push!(x_all, noisy_exp_values[c, τ])
+            push!(y_all, exact_exp_values[c, τ])
             push!(w_all, decay_weights[t][τ])
         end
         df = DataFrame(x = x_all, y = y_all, w = w_all)
@@ -559,8 +602,8 @@ function cdr(
         if use_target && exact_target_exp_value !== nothing
             err_after = abs(exact_target_exp_value[t] - corrected[t]) #/ abs(exact_target_exp_value[t])
             err_before = abs(exact_target_exp_value[t] - noisy_target_exp_value[t]) #/ abs(exact_target_exp_value[t])
-            push!(abs_errors_after, err_after)
-            push!(abs_errors_before, err_before)
+            abs_errors_after[t] = err_after
+            abs_errors_before[t] = err_before
         end
 
     end
@@ -573,8 +616,8 @@ end
 #1st method: vnCDR for final step
 function vnCDR(
     noisy_exp_values::Array{Float64,2},        # size (m circuits, n+1 noise levels)
-    exact_exp_values::Vector{Float64},         # size m
-    noisy_target_exp_value::Vector{Float64};  # size n+1
+    exact_exp_values::Array{Float64,1},         # size m
+    noisy_target_exp_value::Array{Float64, 1};  # size n+1
     exact_target_exp_value::Union{Nothing, Float64}=nothing,
     use_target::Bool=true,
     lambda::Float64=0.0, fit_type = "linear" , fit_intercept = false                    
@@ -587,13 +630,15 @@ function vnCDR(
     model = lambda===0.0 ? LinearRegressor(fit_intercept = fit_intercept) : RidgeRegressor(lambda=lambda,fit_intercept = fit_intercept)
     
     if use_target && exact_target_exp_value !== nothing
-        abs_error_before = abs(exact_target_exp_value - noisy_target_exp_value[end]) 
+        abs_error_before = abs(exact_target_exp_value - noisy_target_exp_value[1]) 
     end 
 
     if fit_type === "exponential"
-        exact_exp_values = log.(exact_exp_values)
-        noisy_exp_values = log.(noisy_exp_values)
-        noisy_target_exp_value = log.(noisy_target_exp_value)
+        # make sure we can fit even with values <0 but >-2
+        offset = 2.0
+        exact_exp_values = log.(exact_exp_values.+offset)
+        noisy_exp_values = log.(noisy_exp_values.+offset)
+        noisy_target_exp_value = log.(noisy_target_exp_value.+offset)
     end
     
     # Convert input matrix to DataFrame
@@ -614,7 +659,7 @@ function vnCDR(
     end
 
     if fit_type === "exponential"
-        pred = exp(pred)
+        pred = exp(pred).-offset
     end
     
     @logmsg SubInfo "pred , $(pred)"
@@ -633,9 +678,9 @@ end
 
 function vnCDR(
     noisy_exp_values::Array{Float64,3},  # (matrix) from via vnCDR_training_trotter_time_evolution      # size (n+1 noise levels, m circuits, t+1 steps)
-    exact_exp_values::Vector{Vector{Float64}},  # from  trotter_time_evolution
+    exact_exp_values::Array{Float64, 2},  # from  trotter_time_evolution
     noisy_target_exp_value::Array{Float64,2}; # (matrix) from zne_time_evolution
-    exact_target_exp_value::Union{Nothing, Vector{Float64}}=nothing,
+    exact_target_exp_value::Union{Nothing, Array{Float64,1}}=nothing,
     use_target::Bool=true,
     lambda::Float64=0.0, fit_type = "linear", fit_intercept = false                     # regularization strength
 )
@@ -645,14 +690,13 @@ function vnCDR(
     """
 
     nsteps = size(noisy_exp_values, 3) # one more than nsteps (includes time 0)
-    corrected = Vector{Float64}(undef, nsteps)
-    abs_errors_after = Float64[] # vector 
-    abs_errors_before = Float64[] 
+    corrected = Array{Float64, 1}(undef, nsteps)
+    abs_errors_after = Array{Float64, 1}(undef, nsteps) # vector 
+    abs_errors_before = Array{Float64, 1}(undef, nsteps) 
     for i in 1:nsteps
-        exact_exp_values_last  = [row[i] for row in exact_exp_values]
         result = vnCDR(
         noisy_exp_values[:, :, i],
-        exact_exp_values_last,
+        exact_exp_values[:, i],
         noisy_target_exp_value[:,i];
         exact_target_exp_value = use_target ? (exact_target_exp_value === nothing ? nothing : exact_target_exp_value[i]) : nothing,
         use_target = use_target,
@@ -663,8 +707,8 @@ function vnCDR(
 
         if use_target && exact_target_exp_value !== nothing
             corrected[i], err_after, err_before = result
-            push!(abs_errors_after, err_after)
-            push!(abs_errors_before, err_before)
+            abs_errors_after[i] = err_after
+            abs_errors_before[i] = err_before
         else
             corrected[i] = result
         end
@@ -701,7 +745,7 @@ function full_run_all_methods(nq, nl, topology, layer, J, h, dt,
     Function which runs the all error mitigation methods (CDR, ZNE, vnCDR) for the given ansatz.
     The function returns the CDR-corrected expectation value and the absative error before and after the correction (if available) and logs the results.
     """
-    
+    U = 0.0
     @logmsg SubInfo "→ Starting full_run_all_methods (noise_kind=$noise_kind, σ=$angle_definition)"
     T = dt*nl
     # determine observable name
@@ -720,7 +764,7 @@ function full_run_all_methods(nq, nl, topology, layer, J, h, dt,
     # generate training set if needed
     if training_set === nothing
     @logmsg SubInfo "→ Generating training set (n=$num_samples)…"
-    training_set = training_circuit_generation_strict_perturbation(layer, J, h, dt, angle_definition; num_samples=num_samples)
+    training_set = training_circuit_generation_strict_perturbation(layer, dt, J, h, angle_definition, U; num_samples=num_samples)
     end
     @logmsg SubInfo "→ Training set size: $(length(training_set))"
 
@@ -775,7 +819,7 @@ function full_run_all_methods(nq, nl, topology, layer, J, h, dt,
     @logmsg SubInfo "→ noisy_train done in $(round(timetmp2 - timetmp1; digits=2)) s"
 
     # --- ZNE ---
-    zne_levels = zne_time_evolution(nq, nl, topology, layer, J, h, dt; observable=observable,
+    zne_levels = zne_time_evolution(nq, nl, topology, layer, dt, J, h, U; observable=observable,
             noise_kind=noise_kind,
             min_abs_coeff=min_abs_coeff,
             max_weight=max_weight,
