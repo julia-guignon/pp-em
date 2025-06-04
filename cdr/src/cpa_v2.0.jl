@@ -148,7 +148,7 @@ function define_thetas(circuit, dt, J=2.0, h=1.0, U=1.0)
     return thetas
 end 
 
-function trotter_time_evolution(nq, nl, topology, layer; observable = nothing, special_thetas=nothing, noise_kind="none", min_abs_coeff=0.0, max_weight = Inf, noise_level = 1.0, depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
+function trotter_time_evolution(nq, nl, topology, layer, thetas; observable = nothing, noise_kind="none", min_abs_coeff=0.0, max_weight = Inf, noise_level = 1.0, depol_strength=0.02, dephase_strength=0.02)
 
     """
     Function that computes the time evolution of the ansatz using the first order Trotter approximation exact time evolution operator.
@@ -161,12 +161,6 @@ function trotter_time_evolution(nq, nl, topology, layer; observable = nothing, s
         obs = deepcopy(observable)
     end
 
-    if special_thetas===nothing
-        error("not implemented")
-        # thetas = constrain_params(ansatz)
-    else
-        thetas = special_thetas
-    end
 
 
     
@@ -193,6 +187,11 @@ function trotter_time_evolution(nq, nl, topology, layer; observable = nothing, s
             full_noise(psum, depol_strength, dephase_strength, noise_level)
         elseif noise_kind=="depolarizing"
             depol_noise(psum, depol_strength, noise_level)
+        elseif noise_kind=="dephasing"
+            dephase_noise(psum, dephase_strength, noise_level)
+        elseif noise_kind=="none"
+        else
+            error("Noise kind given ($noise_kind) not recognized.")
         end
         push!(expvals_trotter, overlapwithzero(psum))
     end
@@ -202,7 +201,7 @@ end
 
 function full_noise(psum::PauliSum, p::Float64, q::Float64, noise_level::Float64=1.0)
     for (pstr, coeff) in psum
-        set!(psum, pstr, coeff*(1-noise_level*p)^countweight(pstr)*(1-q)^countxy(pstr))
+        set!(psum, pstr, coeff*(1-noise_level*p)^countweight(pstr)*(1-noise_level*q)^countxy(pstr))
     end
 end
 
@@ -212,9 +211,9 @@ function depol_noise(psum::PauliSum, p::Float64, noise_level::Float64=1.0)
     end
 end
 
-function dephas_noise(psum::PauliSum, q::Float64)
+function dephase_noise(psum::PauliSum, q::Float64, noise_level::Float64=1.0)
     for (pstr, coeff) in psum
-        set!(psum, pstr, coeff*(1-q)^countxy(pstr))
+        set!(psum, pstr, coeff*(1-noise_level*q)^countxy(pstr))
     end
 end
 
@@ -292,17 +291,17 @@ function training_circuit_generation_loose_perturbation(layer, dt, J, h, angle_d
 
     for _ in 1:num_samples
         if change_theta_h
-            tht_h_perturbed, _ = sample_function(angle_definition)
+            tht_h_perturbed, _, _ = sample_function(angle_definition)
         else 
             tht_h_perturbed = theta_h
         end
         if change_theta_J
-            _, tht_J_perturbed = sample_function(angle_definition)
+            _, tht_J_perturbed, _ = sample_function(angle_definition)
         else 
             tht_J_perturbed = theta_J
         end
         if change_theta_U
-            _, tht_U_perturbed = sample_function(angle_definition)
+            _, _, tht_U_perturbed = sample_function(angle_definition)
         else 
             tht_U_perturbed = theta_U
         end
@@ -371,7 +370,7 @@ function training_circuit_generation_strict_perturbation(layer, dt, J, h, angle_
     return training_thetas_list
 end
 
-function training_trotter_time_evolution(nq, nl, topology, layer, training_thetas::Vector{Vector{Float64}}; observable = nothing, noise_kind="none", min_abs_coeff=0.0, max_weight = Inf, noise_level = 1.0, depol_strength=0.02, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
+function training_trotter_time_evolution(nq, nl, topology, layer, training_thetas::Vector{Vector{Float64}}; observable = nothing, noise_kind="none", min_abs_coeff=0.0, max_weight = Inf, noise_level = 1.0, depol_strength=0.02, dephase_strength=0.01)
    
     """
     Function that computes the time evolution of the ansatz using the first order Trotter approximation exact time evolution operator.
@@ -380,14 +379,14 @@ function training_trotter_time_evolution(nq, nl, topology, layer, training_theta
 
     exact_expvals = Array{Float64,2}(undef, length(training_thetas), nl+1)
     for (i, thetas) in enumerate(training_thetas)
-        exact_expvals[i, :] = trotter_time_evolution(nq, nl, topology, layer; observable = observable, special_thetas=thetas, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff, max_weight = max_weight, noise_level = noise_level, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double)
+        exact_expvals[i, :] = trotter_time_evolution(nq, nl, topology, layer, thetas; observable = observable, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff, max_weight = max_weight, noise_level = noise_level, depol_strength=depol_strength, dephase_strength=dephase_strength)
     end
     return exact_expvals
 end
 
 
 ######### ZNE isolated implementation ##########
-function zne_time_evolution(nq, nl, topology, layer, dt, J, h, U=0.0; observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, noise_levels = [1,1.5,2.0], depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
+function zne_time_evolution(nq, nl, topology, layer, dt, J, h, U=0.0; observable = nothing, noise_kind="noiseless", min_abs_coeff=0.0, max_weight = Inf, noise_levels = [1,1.5,2.0], depol_strength=0.02, dephase_strength=0.02)
 
     """
     Function that computes the time evolution of the ansatz using the first order Trotter approximation exact time evolution operator at different noise levels.
@@ -396,10 +395,8 @@ function zne_time_evolution(nq, nl, topology, layer, dt, J, h, U=0.0; observable
     expvals = Array{Float64,2}(undef, length(noise_levels), nl+1)
     thetas = define_thetas(layer, dt, J, h, U)
     for (idx,i) in enumerate(noise_levels)
-        expval_target = trotter_time_evolution(nq, nl, topology, layer; special_thetas=thetas, observable = observable, noise_kind=noise_kind, noise_level = i,min_abs_coeff=min_abs_coeff,max_weight = max_weight, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double)
-        for j in 1:length(expval_target)
-            expvals[idx,:] .= expval_target
-        end
+        expval_target = trotter_time_evolution(nq, nl, topology, layer, thetas; observable = observable, noise_kind=noise_kind, noise_level = i,min_abs_coeff=min_abs_coeff,max_weight = max_weight, depol_strength=depol_strength, dephase_strength=dephase_strength)
+        expvals[idx,:] .= expval_target
     end
     return expvals
 end
@@ -481,7 +478,7 @@ end
 
 ###### vnCDR (ZNE and CDR combined) ##########
 
-function vnCDR_training_trotter_time_evolution(nq, nl, topology, layer, training_thetas::Vector{Vector{Float64}}; observable=nothing, noise_kind="none", min_abs_coeff=0.0, max_weight=Inf, noise_levels=[1, 1.5,2.0], depol_strength=0.01, dephase_strength=0.01, depol_strength_double=0.0033, dephase_strength_double=0.0033)
+function vnCDR_training_trotter_time_evolution(nq, nl, topology, layer, training_thetas::Vector{Vector{Float64}}; observable=nothing, noise_kind="none", min_abs_coeff=0.0, max_weight=Inf, noise_levels=[1, 1.5,2.0], depol_strength=0.02, dephase_strength=0.02)
     
     """
     Function that computes the training data for several noise levels.
@@ -491,9 +488,9 @@ function vnCDR_training_trotter_time_evolution(nq, nl, topology, layer, training
     exact_expvals = Array{Float64,3}(undef, length(noise_levels), length(training_thetas), nl+1) # 3D array: (noise_levels, circuits, nl+1)
 
     for (idx, i) in enumerate(noise_levels) # use enumerate to get valid index
-        noisy_training = training_trotter_time_evolution(nq, nl, topology, layer, training_thetas; observable=observable, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff, max_weight=max_weight, noise_level=i, depol_strength=depol_strength, dephase_strength=dephase_strength, depol_strength_double=depol_strength_double, dephase_strength_double=dephase_strength_double)
+        noisy_training = training_trotter_time_evolution(nq, nl, topology, layer, training_thetas; observable=observable, noise_kind=noise_kind, min_abs_coeff=min_abs_coeff, max_weight=max_weight, noise_level=i, depol_strength=depol_strength, dephase_strength=dephase_strength)
         for j in 1:length(training_thetas)
-            exact_expvals[idx, j, :] .= noisy_training[j] # full trajectory
+            exact_expvals[idx, j, :] .= noisy_training[j, :] # full trajectory
         end
     end
     return exact_expvals
@@ -773,13 +770,14 @@ function full_run_all_methods(nq, nl, topology, layer, J, h, dt,
 
     # compute or inject final‐step target values
     if use_target
-        exact_target = trotter_time_evolution(nq, nl, topology, layer; observable=observable,
+        thetas = define_thetas(layer, dt, J, h)
+        exact_target = trotter_time_evolution(nq, nl, topology, layer, thetas; observable=observable,
                         noise_kind="none",
                         min_abs_coeff=min_abs_coeff_target)
         timetmp = time()
         @logmsg SubInfo "→ exact_target done in $(round(timetmp - time1; digits=2)) s"
 
-        noisy_target = trotter_time_evolution(nq, nl, topology, layer; observable=observable,
+        noisy_target = trotter_time_evolution(nq, nl, topology, layer, thetas; observable=observable,
                         noise_kind=noise_kind,
                         min_abs_coeff=min_abs_coeff_target)
         timetmp = time()
@@ -809,9 +807,7 @@ function full_run_all_methods(nq, nl, topology, layer, J, h, dt,
                         min_abs_coeff=min_abs_coeff_noisy,
                         max_weight=max_weight,
                         depol_strength=depol_strength,
-                        dephase_strength=dephase_strength,
-                        depol_strength_double=depol_strength_double,
-                        dephase_strength_double=dephase_strength_double)
+                        dephase_strength=dephase_strength)
 
     noisy_train = [row[end] for row in noisy_train]
 
@@ -825,9 +821,7 @@ function full_run_all_methods(nq, nl, topology, layer, J, h, dt,
             max_weight=max_weight,
             noise_levels=noise_levels,
             depol_strength=depol_strength,
-            dephase_strength=dephase_strength,
-            depol_strength_double=depol_strength_double,
-            dephase_strength_double=dephase_strength_double)
+            dephase_strength=dephase_strength)
     
     
     zne_levels = zne_levels[:, end]
@@ -935,9 +929,7 @@ function full_run_all_methods(nq, nl, topology, layer, J, h, dt,
                                     max_weight=max_weight,
                                     noise_levels=noise_levels,
                                     depol_strength=depol_strength,
-                                    dephase_strength=dephase_strength,
-                                    depol_strength_double=depol_strength_double,
-                                    dephase_strength_double=dephase_strength_double)
+                                    dephase_strength=dephase_strength)
 
     noisy_train_multi = noisy_train_multi[:, :, end]
 
