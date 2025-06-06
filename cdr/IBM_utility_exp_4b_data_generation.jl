@@ -1,4 +1,4 @@
-include("../src/cpa_v2.0.jl")
+include("pp-em.jl")
 
 ### this file runs in roughly 5 min on my laptop with the current truncation coefficients
 ### DISCLAIMER: if you don't want to kill your computer, don't lower the truncation level brutally,
