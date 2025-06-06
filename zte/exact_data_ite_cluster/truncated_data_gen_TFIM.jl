@@ -1,3 +1,4 @@
+#this blows up, dont know why??
 include("functions_zte.jl")
 global_logger(UnbufferedLogger(stdout, MainInfo)); 
 
