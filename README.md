@@ -1,4 +1,4 @@
-# Error Mitigation on Quantum Dynamicsusing Pauli Propagation
+# Error Mitigation on Quantum Dynamics using Pauli Propagation
 This repo can be used to perform error mitigation using the classical simulation library $`\texttt{PauliPropagation.jl}`$ in Julia. The central implemented error mitigation schemes include:
 - Zero Noise Extrapolation (ZNE)
 - Clifford Data Regression (CDR)
